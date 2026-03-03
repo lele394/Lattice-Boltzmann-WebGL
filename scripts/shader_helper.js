@@ -18,7 +18,7 @@ export function setupQuad(gl) {
 
 
 
-export async function shadersCompiler(gl) {
+export async function shadersCompiler(gl, shaderConfig) {
 
     // 2. Helper: Compile a single shader stage
     const createShader = (type, src) => {
@@ -45,10 +45,16 @@ export async function shadersCompiler(gl) {
         return program;
     };
 
-    const vsSource = await fetch('shaders/vert.glsl').then(res => res.text());
-    const initSource = await fetch('shaders/init.frag').then(res => res.text());
-    const stepSource = await fetch('shaders/step.glsl').then(res => res.text());
-    const displaySource = await fetch('shaders/display.glsl').then(res => res.text());
+    // const vsSource = await fetch('shaders/vert.glsl').then(res => res.text());
+    // const initSource = await fetch('shaders/init.frag').then(res => res.text());
+    // const stepSource = await fetch('shaders/step.glsl').then(res => res.text());
+    // const displaySource = await fetch('shaders/display.glsl').then(res => res.text());
+
+
+    const vsSource = await fetch(shaderConfig.vs).then(res => res.text());
+    const initSource = await fetch(shaderConfig.init).then(res => res.text());
+    const stepSource = await fetch(shaderConfig.step).then(res => res.text());
+    const displaySource = await fetch(shaderConfig.display).then(res => res.text());
 
     // 5. Build the programs
     return {

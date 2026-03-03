@@ -4,6 +4,14 @@ import { setupQuad } from './shader_helper.js';
 import { shadersCompiler } from './shader_helper.js';
 
 
+const shaderConfig = {
+    vs: 'shaders/vert.glsl',
+    init: 'shaders/init/inkDrop.frag',
+    step: 'shaders/step.glsl',
+    display: 'shaders/display.glsl'
+};
+
+
 
 async function grab() {
     const canvas = document.getElementById('lbm-canvas');
@@ -43,7 +51,7 @@ function bindLBMTextures(gl, program, textures) {
 
 function render(gl, programs, ping, pong, canvas, time=0) {
 
-    console.log(`--- Frame at ${time.toFixed(2)} ms ---`);
+    // console.log(`--- Frame at ${time.toFixed(2)} ms ---`);
 
     // LBM Step
     gl.useProgram(programs.step);
@@ -80,6 +88,13 @@ function render(gl, programs, ping, pong, canvas, time=0) {
 
 
 
+
+
+
+
+
+
+
 async function main() {
     
     // Context grab
@@ -102,7 +117,7 @@ async function main() {
     console.log("Quad buffer created:", quadBuffer);
 
     // Fetch and compile shaders
-    const programs = await shadersCompiler(gl);
+    const programs = await shadersCompiler(gl, shaderConfig);
     console.log("Programs ready:", programs);
 
 

@@ -59,6 +59,6 @@ void main() {
     vec3 densCol = vec3(densDiff);
 
     // Output Velocity Speed by default
-    outColor = vec4(speedCol, 1.0);
-    // outColor = vec4(densCol, 1.0);
+    // outColor = vec4(speedCol, 1.0);
+    outColor = vec4(densCol, 1.0);
 }

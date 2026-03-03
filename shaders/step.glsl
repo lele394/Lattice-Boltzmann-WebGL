@@ -16,7 +16,7 @@ void main() {
     // --- CONSTANTS ---
     // Liquid settings
     // Might switch to uniform
-    float tau = 0.6; 
+    float tau = 0.9; 
     float omega = 1.0 / tau;
 
     // LBM stuff
@@ -57,6 +57,8 @@ void main() {
     u /= rho;
 
     // "Collision" => relax to equilibrium
+    // Forgot to say but it's good ol' taylor expansion of the Maxwell-Boltzmann distribution
+    // Fuck I hate maths, but oh well, can't do shit without em
     for(int i = 0; i < 9; i++) {
         float eu = dot(e[i], u);
         float uu = dot(u, u);

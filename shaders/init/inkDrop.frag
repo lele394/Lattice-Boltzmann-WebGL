@@ -22,9 +22,9 @@ void main() {
     float dist = distance(v_uv, vec2(0.5, 0.5));
 
     // If inside a circle of radius 0.1...
-    if (dist < 0.1) {
-        rho = 1.1;             // Slightly higher pressure
-        u = vec2(0.2, 0.1);    // Moving diagonally
+    if (dist < 0.03) {
+        rho = 1.2;             // Slightly higher pressure
+        u = vec2(0.6, 0.2);    // Moving diagonally
     }
 
     // 3. LBM Constants (D2Q9)
