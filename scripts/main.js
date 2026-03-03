@@ -41,7 +41,10 @@ function bindLBMTextures(gl, program, textures) {
 
 
 
-function render(gl, programs, ping, pong, canvas) {
+function render(gl, programs, ping, pong, canvas, time=0) {
+
+    console.log(`--- Frame at ${time.toFixed(2)} ms ---`);
+
     // LBM Step
     gl.useProgram(programs.step);
     gl.bindFramebuffer(gl.FRAMEBUFFER, pong.fbo); 
@@ -69,7 +72,8 @@ function render(gl, programs, ping, pong, canvas) {
 
     // ! Bro why? 
     // ^ rAF API has strict signature, needs to wrap it. Ughhhhh
-    requestAnimationFrame(() => render(gl, programs, ping, pong, canvas));
+    requestAnimationFrame((time) => render(gl, programs, pong, ping, canvas, time));
+    // By the way I'm a genius, swap ping and pong in the rAF call so we don't need to do it manually before.
 }
 
 

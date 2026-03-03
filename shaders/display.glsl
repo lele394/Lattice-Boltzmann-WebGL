@@ -6,7 +6,7 @@
 // out vec4 outColor;
 // void main() {
 //     // shader hellow world
-//     vec2 uv = gl_FragCoord.xy / vec2(800, 600);
+//     vec2 uv = gl_FragCoord.xy / vec2(800, 600); // Modify that
 //     outColor = vec4(uv.x, uv.y, 1.0 - uv.x, 1.0);
 // }
 
@@ -55,9 +55,10 @@ void main() {
 
     // Density
     float densDiff = (rho - 1.0) * 10.0 + 0.5;
+    densDiff = log(densDiff + 1.0) / log(1.5); // Logarithmic scaling for better contrast
     vec3 densCol = vec3(densDiff);
 
     // Output Velocity Speed by default
-    // outColor = vec4(speedCol, 1.0);
-    outColor = vec4(densCol, 1.0);
+    outColor = vec4(speedCol, 1.0);
+    // outColor = vec4(densCol, 1.0);
 }
