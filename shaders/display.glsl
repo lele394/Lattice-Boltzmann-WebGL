@@ -29,36 +29,37 @@ vec3 heatmap(float v) {
 }
 
 void main() {
-    // sample D2Q9 distribution functions
-    vec4 q14 = texture(u_Q1Q4, v_uv);
-    vec4 q58 = texture(u_Q5Q8, v_uv);
-    float q9 = texture(u_Q9, v_uv).r;
+    float f0 = texture(u_Q9, v_uv).r;
+    vec4 f14 = texture(u_Q1Q4, v_uv);
+    vec4 f58 = texture(u_Q5Q8, v_uv);
 
-    // Density
-    float rho = q14.x + q14.y + q14.z + q14.w + 
-                q58.x + q58.y + q58.z + q58.w + q9;
+    float rho = f0 + f14.x + f14.y + f14.z + f14.w + f58.x + f58.y + f58.z + f58.w;
+    // Velocity calculation MUST match the MRT momenta (jx, jy)
+    float ux = (f14.x - f14.z + f58.x - f58.y - f58.z + f58.w) / rho;
+    float uy = (f14.y - f14.w + f58.x + f58.y - f58.z - f58.w) / rho;
 
-    // Velocity
-    // 1:(1,0), 2:(0,1), 3:(-1,0), 4:(0,-1)
-    // 5:(1,1), 6:(-1,1), 7:(-1,-1), 8:(1,-1)
-    float ux = (q14.x - q14.z + q58.x - q58.y - q58.z + q58.w);
-    float uy = (q14.y - q14.w + q58.x + q58.y - q58.z - q58.w);
-    
-    // Normalisation
-    vec2 vel = vec2(ux, uy) / rho;
-    float speed = length(vel);
+    float speed = length(vec2(ux, uy));
 
-    // Visualization modes
-    
-    // Speed
-    vec3 speedCol = heatmap(speed * 5.0); 
+    // --- DEBUG: CHECK FOR EXPLOSION ---
+    // isinf() catches infinity, isnan() catches math errors
+    // also checking if rho <= 0.0 which is a common cause of LBM death
+    bool exploded = isnan(rho) || isinf(rho) || isnan(speed) || isinf(speed) || rho <= 0.0 || speed > 2.0;
 
-    // Density
+    if (exploded) {
+        outColor = vec4(0.0, 1.0, 0.0, 1.0); // Bright Green
+        return; 
+    }
+
+    // 3. Normal Visualization
+    float dilation = 80.0;
+    // vec3 speedCol = heatmap(speed * 5.0); 
+    vec3 speedCol = heatmap(speed * dilation / (1.0 + speed * dilation)); 
+
     float densDiff = (rho - 1.0) * 10.0 + 0.5;
-    densDiff = log(densDiff + 1.0) / log(1.5); // Logarithmic scaling for better contrast
+    // Safety check for log input
+    densDiff = log(max(0.0001, densDiff + 1.0)) / log(1.5); 
     vec3 densCol = vec3(densDiff);
 
-    // Output Velocity Speed by default
-    // outColor = vec4(speedCol, 1.0);
-    outColor = vec4(densCol, 1.0);
+    outColor = vec4(speedCol, 1.0);
+    // outColor = vec4(densCol, 1.0);
 }

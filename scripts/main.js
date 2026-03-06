@@ -51,7 +51,7 @@ function bindLBMTextures(gl, program, textures) {
 
 function render(gl, programs, ping, pong, canvas, time=0) {
 
-    // console.log(`--- Frame at ${time.toFixed(2)} ms ---`);
+    console.log(`--- Frame at ${time.toFixed(2)} ms ---`);
 
     // LBM Step
     gl.useProgram(programs.step);
