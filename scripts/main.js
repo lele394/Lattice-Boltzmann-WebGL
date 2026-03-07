@@ -2,6 +2,7 @@ import { setupBuffers, createWallsTexture } from './inits.js';
 import { createFBO, createWallInitFBO } from './fbo.js';
 import { setupQuad } from './shader_helper.js';
 import { shadersCompiler } from './shader_helper.js';
+import { BITMAP_TEXTURE_UNIT, createCustomBitmapState, clearCustomBitmapState, loadCustomBitmapFromFile as loadCustomBitmapFromFileHelper } from './bitmap.js';
 
 // Settings Cache Manager
 const SettingsCache = {
@@ -122,8 +123,21 @@ const simpleObjects = [
             { key: 'size', label: 'Size', uniform: 'u_size', value: 0.44, step: 0.01, min: 0.01, max: 0.5 },
             { key: 'rotation', label: 'Rotation (deg)', uniform: 'u_rotation', value: 90, step: 1, min: 0, max: 360, isAngle: true }
         ]
+    },
+    {
+        id: 'customBitmap',
+        name: 'Custom Bitmap',
+        shader: 'shaders/objects/customBitmap.frag',
+        params: [
+            { key: 'centerX', label: 'X Position', uniform: 'u_centerX', value: 0.5, step: 0.01, min: 0.0, max: 1.0 },
+            { key: 'centerY', label: 'Y Position', uniform: 'u_centerY', value: 0.5, step: 0.01, min: 0.0, max: 1.0 },
+            { key: 'scale', label: 'Scale', uniform: 'u_scale', value: 1.0, step: 0.01, min: 0.01, max: 4.0 },
+            { key: 'rotation', label: 'Rotation (deg)', uniform: 'u_rotation', value: 0, step: 1, min: 0, max: 360, isAngle: true }
+        ]
     }
 ];
+
+const customBitmapState = createCustomBitmapState();
 
 const shaderConfig = {
     vs: 'shaders/vert.glsl',
@@ -545,6 +559,18 @@ async function main() {
         return initializationModes.find(mode => mode.id === initialization.selectedModeId) || initializationModes[0];
     }
 
+    async function loadCustomBitmapFromFile(file) {
+        if (!file) return;
+
+        await loadCustomBitmapFromFileHelper(gl, customBitmapState, file);
+        simpleObject.selected = 'customBitmap';
+        const simpleObjectSelect = document.getElementById('simple-object-select');
+        if (simpleObjectSelect) simpleObjectSelect.value = 'customBitmap';
+        renderSimpleObjectParams();
+        resetSimulation();
+        SettingsCache.save(settings);
+    }
+
     function renderInitializationParams() {
         if (!initParamsContainer) return;
         initParamsContainer.innerHTML = '';
@@ -744,6 +770,64 @@ async function main() {
         const obj = simpleObjects.find(o => o.id === simpleObject.selected);
         if (!obj) return;
 
+        if (obj.id === 'customBitmap') {
+            const uploadRow = document.createElement('div');
+            uploadRow.className = 'row';
+
+            const uploadLabel = document.createElement('label');
+            uploadLabel.textContent = 'Bitmap';
+
+            const uploadInput = document.createElement('input');
+            uploadInput.type = 'file';
+            uploadInput.accept = 'image/*';
+            uploadInput.style.width = '170px';
+
+            uploadInput.addEventListener('change', async () => {
+                const file = uploadInput.files && uploadInput.files[0];
+                if (!file) return;
+                try {
+                    await loadCustomBitmapFromFile(file);
+                } catch (error) {
+                    console.error('Failed to load custom bitmap:', error);
+                    alert('Failed to load custom bitmap image.');
+                }
+            });
+
+            uploadRow.appendChild(uploadLabel);
+            uploadRow.appendChild(uploadInput);
+            simpleObjectParamsContainer.appendChild(uploadRow);
+
+            const bitmapInfoRow = document.createElement('div');
+            bitmapInfoRow.className = 'row';
+            bitmapInfoRow.style.fontSize = '11px';
+            bitmapInfoRow.style.color = '#9aa0b8';
+
+            const infoLabel = document.createElement('span');
+            if (customBitmapState.loaded) {
+                infoLabel.textContent = `${customBitmapState.fileName || 'Loaded image'} (${customBitmapState.width}x${customBitmapState.height})`;
+            } else {
+                infoLabel.textContent = 'No bitmap loaded';
+            }
+            bitmapInfoRow.appendChild(infoLabel);
+            simpleObjectParamsContainer.appendChild(bitmapInfoRow);
+
+            const clearRow = document.createElement('div');
+            clearRow.className = 'button-group';
+            clearRow.style.marginBottom = '8px';
+
+            const clearButton = document.createElement('button');
+            clearButton.type = 'button';
+            clearButton.textContent = 'Clear Bitmap';
+            clearButton.addEventListener('click', () => {
+                clearCustomBitmapState(gl, customBitmapState);
+                renderSimpleObjectParams();
+                resetSimulation();
+            });
+
+            clearRow.appendChild(clearButton);
+            simpleObjectParamsContainer.appendChild(clearRow);
+        }
+
         obj.params.forEach(param => {
             const row = document.createElement('div');
             row.className = 'row';
@@ -915,6 +999,7 @@ async function main() {
             const obj = simpleObjects.find(o => o.id === simpleObject.selected);
             if (obj && programs[obj.id]) {
                 gl.useProgram(programs[obj.id]);
+                let shouldDrawSimpleObject = true;
                 
                 const resLoc = gl.getUniformLocation(programs[obj.id], "u_res");
                 if (resLoc !== null) gl.uniform2f(resLoc, canvas.width, canvas.height);
@@ -931,8 +1016,30 @@ async function main() {
                         gl.uniform1f(loc, value);
                     }
                 });
+
+                if (obj.id === 'customBitmap') {
+                    if (!customBitmapState.loaded || !customBitmapState.texture) {
+                        shouldDrawSimpleObject = false;
+                    }
+
+                    if (shouldDrawSimpleObject) {
+                        const sizeLoc = gl.getUniformLocation(programs[obj.id], 'u_bitmapSize');
+                        if (sizeLoc !== null) {
+                            gl.uniform2f(sizeLoc, customBitmapState.width, customBitmapState.height);
+                        }
+
+                        const maskLoc = gl.getUniformLocation(programs[obj.id], 'u_bitmapMask');
+                        if (maskLoc !== null) {
+                            gl.activeTexture(gl.TEXTURE0 + BITMAP_TEXTURE_UNIT);
+                            gl.bindTexture(gl.TEXTURE_2D, customBitmapState.texture);
+                            gl.uniform1i(maskLoc, BITMAP_TEXTURE_UNIT);
+                        }
+                    }
+                }
                 
-                gl.drawArrays(gl.TRIANGLES, 0, 6);
+                if (shouldDrawSimpleObject) {
+                    gl.drawArrays(gl.TRIANGLES, 0, 6);
+                }
             }
         }
         
