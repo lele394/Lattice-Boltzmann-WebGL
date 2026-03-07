@@ -3,6 +3,7 @@ import { createFBO, createWallInitFBO } from './fbo.js';
 import { setupQuad } from './shader_helper.js';
 import { shadersCompiler } from './shader_helper.js';
 import { BITMAP_TEXTURE_UNIT, createCustomBitmapState, clearCustomBitmapState, loadCustomBitmapFromFile as loadCustomBitmapFromFileHelper, loadCustomBitmapFromDataUrl as loadCustomBitmapFromDataUrlHelper } from './bitmap.js';
+import { SimulationRecorder } from './recorder.js';
 
 // Settings Cache Manager
 const SettingsCache = {
@@ -426,6 +427,10 @@ async function main() {
     const collapseBtn = document.getElementById('collapse-btn');
     const simControls = document.getElementById('sim-controls');
     const controlsHeader = document.getElementById('controls-header');
+    const recordToggleBtn = document.getElementById('record-toggle-btn');
+    const recordDownloadBtn = document.getElementById('record-download-btn');
+    const recordIntervalInput = document.getElementById('record-interval-input');
+    const recordingStatus = document.getElementById('recording-status');
 
     const canvasDimensions = {
         width: canvas.width,
@@ -436,6 +441,29 @@ async function main() {
         isPlaying: true,
         stepRequests: 0,
         maxStepsPerSecond: 600
+    };
+
+    // Initialize recorder
+    const recorder = new SimulationRecorder(canvas);
+    let recordedBlob = null;
+
+    recorder.onFrameCountUpdate = (frameCount) => {
+        if (recordingStatus) {
+            recordingStatus.textContent = `Recording: ${frameCount} frame${frameCount !== 1 ? 's' : ''}`;
+            recordingStatus.style.color = '#ff6b6b';
+        }
+    };
+
+    recorder.onRecordingComplete = (blob, format) => {
+        recordedBlob = blob;
+        if (recordingStatus) {
+            recordingStatus.textContent = `Ready to download (${recorder.recordedFrameCount} frames)`;
+            recordingStatus.style.color = '#51cf66';
+        }
+        if (recordDownloadBtn) {
+            recordDownloadBtn.disabled = false;
+        }
+        console.log(`Recording complete: ${(blob.size / 1024 / 1024).toFixed(2)} MB`);
     };
 
     const boundaryMode = {
@@ -1261,6 +1289,54 @@ async function main() {
         });
     }
 
+    // Recording controls
+    if (recordToggleBtn) {
+        recordToggleBtn.addEventListener('click', async () => {
+            if (!recorder.isRecording) {
+                // Start recording
+                const format = 'webm';
+                const interval = Number(recordIntervalInput?.value) || 1;
+                
+                if (!SimulationRecorder.isSupported()) {
+                    alert('Recording is not supported in this browser.');
+                    return;
+                }
+                
+                recordedBlob = null;
+                if (recordDownloadBtn) recordDownloadBtn.disabled = true;
+                
+                await recorder.startRecording(format, interval);
+                
+                recordToggleBtn.textContent = 'Stop Recording';
+                recordToggleBtn.style.background = '#c92a2a';
+                if (recordingStatus) {
+                    recordingStatus.textContent = 'Recording: 0 frames';
+                    recordingStatus.style.color = '#ff6b6b';
+                }
+            } else {
+                // Stop recording
+                await recorder.stopRecording();
+                
+                recordToggleBtn.textContent = 'Start Recording';
+                recordToggleBtn.style.background = '';
+            }
+        });
+    }
+
+    if (recordDownloadBtn) {
+        recordDownloadBtn.addEventListener('click', () => {
+            if (recordedBlob) {
+                const format = 'webm';
+                recorder.downloadRecording(recordedBlob, format);
+                
+                if (recordingStatus) {
+                    recordingStatus.textContent = 'Download started';
+                    recordingStatus.style.color = '#888';
+                }
+            }
+        });
+    }
+
     // Collapse/Expand functionality
     if (collapseBtn && controlsHeader && simControls) {
         const toggleCollapse = () => {
@@ -1612,6 +1688,12 @@ async function main() {
         }
 
         drawDisplay(gl, programs, readState, canvas, wallsTexture, visualization);
+        
+        // Capture frame for recording if active and simulation is playing
+        if (recorder.isRecording && simControl.isPlaying && stepsThisFrame > 0) {
+            recorder.captureFrame();
+        }
+        
         updateVelocityDisplay();
         requestAnimationFrame(frame);
     }

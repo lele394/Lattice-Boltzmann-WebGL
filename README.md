@@ -1,6 +1,16 @@
 # Lattice-Boltzmann WebGL
 
 
+
+<div class="img-container" style="width: 100%;">
+    <img src="./res/cow.gif" alt="" style="
+    width: 100%;
+    height: auto;
+    display: block;">
+</div>
+
+
+
 > #### Clarification on AI use in this project :
 > Having some experience of working with LLM in computational science for the past few years, it has become increasingly obvious that they are not to be trusted in physics related domains. In contrast, it's ability to quickly add JS and HTML elements has been found to be quite reliable. As such, AI has been used through Copilot to help in debugging and commenting as well as add HTML and JS features. It has **not** been used to implement the physics simulation.
 
