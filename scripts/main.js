@@ -1563,7 +1563,7 @@ async function main() {
         const height = ctx.canvas.height;
         const centerX = width / 2;
         const centerY = height / 2;
-        const scale = 40; // Distance from center to edge points
+        const scale = 80; // Distance from center to edge points (doubled for 360px canvas)
 
         // Clear canvas
         ctx.clearRect(0, 0, width, height);
@@ -1585,7 +1585,7 @@ async function main() {
 
         // Draw grid lines
         ctx.strokeStyle = 'rgba(100, 100, 120, 0.3)';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 2;
         ctx.beginPath();
         // Vertical and horizontal
         ctx.moveTo(centerX, 0);
@@ -1608,7 +1608,7 @@ async function main() {
             // Draw direction line
             if (i > 0) { // Skip center for line drawing
                 ctx.strokeStyle = 'rgba(159, 179, 255, 0.5)';
-                ctx.lineWidth = 2;
+                ctx.lineWidth = 4;
                 ctx.beginPath();
                 ctx.moveTo(centerX, centerY);
                 ctx.lineTo(endX, endY);
@@ -1616,7 +1616,7 @@ async function main() {
 
                 // Draw arrow head
                 const angle = Math.atan2(dy, dx);
-                const arrowSize = 8;
+                const arrowSize = 16;
                 ctx.beginPath();
                 ctx.moveTo(endX, endY);
                 ctx.lineTo(
@@ -1635,18 +1635,18 @@ async function main() {
             // Draw value text
             const value = f[i].toFixed(3);
             const textX = centerX + dx * scale * (i === 0 ? 0 : 1.3);
-            const textY = centerY + dy * scale * (i === 0 ? 0 : 1.3) + (i === 0 ? -18 : 0);
+            const textY = centerY + dy * scale * (i === 0 ? 0 : 1.3) + (i === 0 ? -36 : 0);
 
             // Background for text
-            ctx.font = '11px "Courier New", monospace';
+            ctx.font = '22px "Courier New", monospace';
             const metrics = ctx.measureText(value);
-            const padding = 3;
+            const padding = 6;
             ctx.fillStyle = 'rgba(20, 20, 24, 0.9)';
             ctx.fillRect(
                 textX - metrics.width / 2 - padding,
-                textY - 6 - padding,
+                textY - 12 - padding,
                 metrics.width + padding * 2,
-                12 + padding * 2
+                24 + padding * 2
             );
 
             // Draw text
@@ -1655,15 +1655,16 @@ async function main() {
             ctx.textBaseline = 'middle';
             ctx.fillText(value, textX, textY);
 
-            // Draw index label
-            ctx.font = '9px "Courier New", monospace';
+            // Draw index label (above for top directions, below for others)
+            const isTopDirection = [2, 5, 6].includes(i);
+            ctx.font = '18px "Courier New", monospace';
             ctx.fillStyle = '#888';
-            ctx.fillText(`f${i}`, textX, textY + 12);
+            ctx.fillText(`f${i}`, textX, textY + (isTopDirection ? -24 : 24));
         });
 
         // Draw center dot
         ctx.beginPath();
-        ctx.arc(centerX, centerY, 4, 0, Math.PI * 2);
+        ctx.arc(centerX, centerY, 8, 0, Math.PI * 2);
         ctx.fillStyle = '#51cf66';
         ctx.fill();
     }
