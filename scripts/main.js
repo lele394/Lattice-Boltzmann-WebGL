@@ -427,6 +427,7 @@ async function main() {
     const collapseBtn = document.getElementById('collapse-btn');
     const simControls = document.getElementById('sim-controls');
     const controlsHeader = document.getElementById('controls-header');
+    const controlsGithubLink = document.getElementById('controls-github-link');
     const recordToggleBtn = document.getElementById('record-toggle-btn');
     const recordDownloadBtn = document.getElementById('record-download-btn');
     const recordIntervalInput = document.getElementById('record-interval-input');
@@ -1361,6 +1362,12 @@ async function main() {
         if (wasCollapsed) {
             simControls.classList.add('collapsed');
         }
+    }
+
+    if (controlsGithubLink) {
+        controlsGithubLink.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
     }
 
     if (stepRateInput) {

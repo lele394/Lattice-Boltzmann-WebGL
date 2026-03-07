@@ -2,13 +2,9 @@
 
 
 
-<div class="img-container" style="width: 100%;">
-    <img src="./res/cow.gif" alt="" style="
-    width: 100%;
-    height: auto;
-    display: block;">
-</div>
-
+<p align="center">
+  <img src="./res/cow.gif" width="1200">
+</p>
 
 
 > #### Clarification on AI use in this project :

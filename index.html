@@ -79,6 +79,31 @@
         color: #e0e0e0;
     }
 
+    #controls-header-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+    }
+
+    #controls-github-link {
+        color: #9fb3ff;
+        text-decoration: none;
+        font-size: 12px;
+        font-weight: 500;
+        border: 1px solid rgba(159, 179, 255, 0.35);
+        border-radius: 6px;
+        padding: 3px 8px;
+        background: rgba(159, 179, 255, 0.08);
+        transition: all 0.2s ease;
+    }
+
+    #controls-github-link:hover {
+        color: #c6d4ff;
+        border-color: rgba(198, 212, 255, 0.55);
+        background: rgba(159, 179, 255, 0.14);
+    }
+
     #collapse-btn {
         background: transparent;
         border: none;
@@ -468,7 +493,10 @@
 
     <div id="sim-controls">
         <div id="controls-header">
-            <div id="controls-title">Simulation Controls</div>
+            <div id="controls-header-left">
+                <div id="controls-title">Simulation Controls</div>
+                <a id="controls-github-link" href="https://github.com/lele394/Lattice-Boltzmann-WebGL" target="_blank" rel="noopener noreferrer">GitHub</a>
+            </div>
             <button id="collapse-btn" type="button" title="Collapse/Expand">▼</button>
         </div>
         
