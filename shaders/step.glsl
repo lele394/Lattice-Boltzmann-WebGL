@@ -1,7 +1,7 @@
 #version 300 es
 precision highp float;
 
-uniform sampler2D u_Q1Q4, u_Q5Q8, u_Q9, u_walls;
+uniform sampler2D u_Q1Q4, u_Q5Q8, u_Q9, u_walls, u_prevWalls;
 uniform vec2 u_res;
 in vec2 v_uv;
 
@@ -39,12 +39,88 @@ void main() {
     float f7 = texture(u_Q5Q8, v_uv + vec2( px.x,  px.y)).b;
     float f8 = texture(u_Q5Q8, v_uv + vec2(-px.x,  px.y)).a;
 
-    // --- MACRO ---
+    vec4 wallData = texture(u_walls, v_uv);
+    vec4 prevWallData = texture(u_prevWalls, v_uv);
+    float isWall = wallData.r;
+    float wallVelX = wallData.g;
+    float wallVelY = wallData.b;
+    float wasWall = prevWallData.r;
+
     float rho = f0 + f1 + f2 + f3 + f4 + f5 + f6 + f7 + f8;
+
+    // Fluid cell that has just been uncovered by moving wall: reinitialize from equilibrium
+    if (isWall <= 0.5 && wasWall > 0.5) {
+        float u0 = prevWallData.g;
+        float v0 = prevWallData.b;
+        float rho0 = 1.0;
+        float uv2 = u0 * u0 + v0 * v0;
+
+        float fe0 = (4.0/9.0) * rho0 * (1.0 - 1.5 * uv2);
+        float fe1 = (1.0/9.0) * rho0 * (1.0 + 3.0*u0 + 4.5*u0*u0 - 1.5*uv2); // E
+        float fe2 = (1.0/9.0) * rho0 * (1.0 + 3.0*v0 + 4.5*v0*v0 - 1.5*uv2); // N
+        float fe3 = (1.0/9.0) * rho0 * (1.0 - 3.0*u0 + 4.5*u0*u0 - 1.5*uv2); // W
+        float fe4 = (1.0/9.0) * rho0 * (1.0 - 3.0*v0 + 4.5*v0*v0 - 1.5*uv2); // S
+        float fe5 = (1.0/36.0) * rho0 * (1.0 + 3.0*(u0+v0) + 4.5*(u0+v0)*(u0+v0) - 1.5*uv2); // NE
+        float fe6 = (1.0/36.0) * rho0 * (1.0 + 3.0*(-u0+v0) + 4.5*(-u0+v0)*(-u0+v0) - 1.5*uv2); // NW
+        float fe7 = (1.0/36.0) * rho0 * (1.0 + 3.0*(-u0-v0) + 4.5*(-u0-v0)*(-u0-v0) - 1.5*uv2); // SW
+        float fe8 = (1.0/36.0) * rho0 * (1.0 + 3.0*(u0-v0) + 4.5*(u0-v0)*(u0-v0) - 1.5*uv2); // SE
+
+        out_Q1Q4 = vec4(fe1, fe2, fe3, fe4);
+        out_Q5Q8 = vec4(fe5, fe6, fe7, fe8);
+        out_Q9 = fe0;
+        return;
+    }
+
+    // Cell that just became wall: initialize as wall-equilibrium first to avoid hard shocks
+    if (isWall > 0.5 && wasWall <= 0.5) {
+        float rho0 = 1.0;
+        float cardCoeff = (2.0 / 3.0) * rho0;
+        float diagCoeff = (1.0 / 6.0) * rho0;
+
+        float b0 = (4.0/9.0) * rho0;
+        float b1 = (1.0/9.0) * rho0 + cardCoeff * wallVelX;
+        float b2 = (1.0/9.0) * rho0 + cardCoeff * wallVelY;
+        float b3 = (1.0/9.0) * rho0 - cardCoeff * wallVelX;
+        float b4 = (1.0/9.0) * rho0 - cardCoeff * wallVelY;
+        float b5 = (1.0/36.0) * rho0 + diagCoeff * ( wallVelX + wallVelY);
+        float b6 = (1.0/36.0) * rho0 + diagCoeff * (-wallVelX + wallVelY);
+        float b7 = (1.0/36.0) * rho0 + diagCoeff * (-wallVelX - wallVelY);
+        float b8 = (1.0/36.0) * rho0 + diagCoeff * ( wallVelX - wallVelY);
+
+        out_Q1Q4 = vec4(b1, b2, b3, b4);
+        out_Q5Q8 = vec4(b5, b6, b7, b8);
+        out_Q9 = b0;
+        return;
+    }
+
+    // Solid cell: bounce-back + moving wall correction
+    if (isWall > 0.5) {
+        float rho0 = 1.0;
+        float cardCoeff = (2.0 / 3.0) * rho0; // 6 * w_card * rho0
+        float diagCoeff = (1.0 / 6.0) * rho0; // 6 * w_diag * rho0
+
+        float b0 = f0;
+        float b1 = f3 + cardCoeff * wallVelX;                 // E from W
+        float b2 = f4 + cardCoeff * wallVelY;                 // N from S
+        float b3 = f1 - cardCoeff * wallVelX;                 // W from E
+        float b4 = f2 - cardCoeff * wallVelY;                 // S from N
+        float b5 = f7 + diagCoeff * ( wallVelX + wallVelY);   // NE from SW
+        float b6 = f8 + diagCoeff * (-wallVelX + wallVelY);   // NW from SE
+        float b7 = f5 + diagCoeff * (-wallVelX - wallVelY);   // SW from NE
+        float b8 = f6 + diagCoeff * ( wallVelX - wallVelY);   // SE from NW
+
+        out_Q1Q4 = vec4(b1, b2, b3, b4);
+        out_Q5Q8 = vec4(b5, b6, b7, b8);
+        out_Q9 = b0;
+        return;
+    }
+
+    // --- MACRO ---
+    float safeRho = max(rho, 1e-8);
     float jx  = (f1 - f3 + f5 - f6 - f7 + f8);
     float jy  = (f2 - f4 + f5 + f6 - f7 - f8);
-    float u = jx / rho;
-    float v = jy / rho;
+    float u = jx / safeRho;
+    float v = jy / safeRho;
     float u2v2 = u*u + v*v;
 
     // --- FORWARD TRANSFORM (m = M * f) ---
@@ -114,30 +190,6 @@ void main() {
     // out_Q1Q4 = vec4(fn[1], fn[2], fn[3], fn[4]);
     // out_Q5Q8 = vec4(fn[5], fn[6], fn[7], fn[8]);
     // out_Q9 = fn[0];
-
-    // This wasn't fun
-    // Ordering was fucked again
-    vec4 wallData = texture(u_walls, v_uv);
-    float isWall = wallData.r;
-    float wallVelX = wallData.g;
-    float wallVelY = wallData.b;
-    
-    if (isWall > 0.5) {
-        // Bounce-back boundary condition: reverse populations
-        // Reference ordering: [(0,0), E, SE, S, SW, W, NW, N, NE]
-        // Our array ordering: fnr[0=rest, 1=E, 2=SE, 3=S, 4=SW, 5=W, 6=NW, 7=N, 8=NE]
-        
-        // Swap opposite directions 
-        float temp;
-        temp = fnr[1]; fnr[1] = fnr[5]; fnr[5] = temp;     // E <-> W
-        temp = fnr[3]; fnr[3] = fnr[7]; fnr[7] = temp;     // S <-> N
-        temp = fnr[4]; fnr[4] = fnr[8]; fnr[8] = temp;     // SW <-> NE
-        temp = fnr[2]; fnr[2] = fnr[6]; fnr[6] = temp;     // SE <-> NW
-        
-        // TODO: Implement proper moving wall boundary condition
-        // The current implementation was causing instability
-        // For now, walls are always static (no-slip BC via bounce-back)
-    }
 
     // Skipping reordering and direct to output
     out_Q1Q4 = vec4(fnr[1], fnr[7], fnr[5], fnr[3]);

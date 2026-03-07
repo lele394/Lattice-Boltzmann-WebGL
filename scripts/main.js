@@ -16,8 +16,16 @@ const wallObjects = [
         id: 'fourCircles',
         name: 'Four Circles',
         enabled: false,
-        type: 'object',
-        shader: 'shaders/objects/fourCircles.frag'
+        type: 'static',
+        instantiateShader: 'shaders/objects/fourCircles.frag'
+    },
+    {
+        id: 'movingVerticalBar',
+        name: 'Moving Vertical Bar',
+        enabled: false,
+        type: 'moving',
+        instantiateShader: 'shaders/objects/movingVerticalBar.instantiate.frag',
+        moveShader: 'shaders/objects/movingVerticalBar.move.frag'
     }
 ];
 
@@ -26,13 +34,17 @@ const shaderConfig = {
     init: 'shaders/init/inkDrop.frag',
     step: 'shaders/step.glsl',
     display: 'shaders/display.glsl',
-    wallInit: 'shaders/init/walls.frag'
+    wallInit: 'shaders/init/walls.frag',
+    wallsCopy: 'shaders/wallsCopy.frag'
 };
 
 // Add object shaders to config
 wallObjects.forEach(obj => {
-    if (obj.type === 'object' && obj.shader) {
-        shaderConfig[obj.id] = obj.shader;
+    if (obj.instantiateShader) {
+        shaderConfig[`${obj.id}_instantiate`] = obj.instantiateShader;
+    }
+    if (obj.moveShader) {
+        shaderConfig[`${obj.id}_move`] = obj.moveShader;
     }
 });
 
@@ -54,7 +66,7 @@ async function grab() {
 
 
 
-function bindLBMTextures(gl, program, textures, wallsTexture) {
+function bindLBMTextures(gl, program, textures, wallsTexture, prevWallsTexture) {
     // Bind Q1Q4 to Unit 0
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, textures.Q1Q4);
@@ -74,17 +86,24 @@ function bindLBMTextures(gl, program, textures, wallsTexture) {
     gl.activeTexture(gl.TEXTURE3);
     gl.bindTexture(gl.TEXTURE_2D, wallsTexture);
     gl.uniform1i(gl.getUniformLocation(program, "u_walls"), 3);
+
+    if (prevWallsTexture) {
+        gl.activeTexture(gl.TEXTURE4);
+        gl.bindTexture(gl.TEXTURE_2D, prevWallsTexture);
+        const prevWallsLoc = gl.getUniformLocation(program, "u_prevWalls");
+        if (prevWallsLoc !== null) gl.uniform1i(prevWallsLoc, 4);
+    }
 }
 
 
 
-function runStep(gl, programs, readState, writeState, canvas, wallsTexture) {
+function runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture) {
     // LBM Step
     gl.useProgram(programs.step);
     gl.bindFramebuffer(gl.FRAMEBUFFER, writeState.fbo);
     gl.viewport(0, 0, canvas.width, canvas.height);
     
-    bindLBMTextures(gl, programs.step, readState, wallsTexture);
+    bindLBMTextures(gl, programs.step, readState, wallsTexture, prevWallsTexture);
     
     // params
     const resLoc = gl.getUniformLocation(programs.step, "u_res");
@@ -98,7 +117,7 @@ function drawDisplay(gl, programs, stateToDisplay, canvas, wallsTexture) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     
-    bindLBMTextures(gl, programs.display, stateToDisplay, wallsTexture);
+    bindLBMTextures(gl, programs.display, stateToDisplay, wallsTexture, null);
     
     const resLocDisp = gl.getUniformLocation(programs.display, "u_res");
     if (resLocDisp !== null) gl.uniform2f(resLocDisp, canvas.width, canvas.height);
@@ -144,14 +163,19 @@ async function main() {
 
     // Create shared walls texture (used by both ping and pong)
     const wallsTexture = createWallsTexture(canvas, gl);
+    const prevWallsTexture = createWallsTexture(canvas, gl);
     const wallInitFBO = createWallInitFBO(gl, wallsTexture);
+    const prevWallFBO = createWallInitFBO(gl, prevWallsTexture);
 
     // Single bind cuz everyone uses it
-    const programsToSetup = ['init', 'step', 'display', 'wallInit'];
+    const programsToSetup = ['init', 'step', 'display', 'wallInit', 'wallsCopy'];
     // Add all object shader programs
     wallObjects.forEach(obj => {
-        if (obj.type === 'object') {
-            programsToSetup.push(obj.id);
+        if (obj.instantiateShader) {
+            programsToSetup.push(`${obj.id}_instantiate`);
+        }
+        if (obj.moveShader) {
+            programsToSetup.push(`${obj.id}_move`);
         }
     });
     
@@ -209,6 +233,7 @@ async function main() {
     let writeState = pong;
     let lastTimeMs = 0;
     let stepBudget = 0;
+    let simulationIteration = 0;
 
     function initializeState(targetState) {
         gl.useProgram(programs.init);
@@ -217,7 +242,23 @@ async function main() {
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
 
-    function initializeWalls() {
+    function hasEnabledMovingObjects() {
+        return wallObjects.some(obj => obj.enabled && obj.type === 'moving' && obj.moveShader);
+    }
+
+    function copyWallsToPrev() {
+        gl.useProgram(programs.wallsCopy);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, prevWallFBO);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.disable(gl.BLEND);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, wallsTexture);
+        const wallsLoc = gl.getUniformLocation(programs.wallsCopy, 'u_walls');
+        if (wallsLoc !== null) gl.uniform1i(wallsLoc, 0);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    function initializeWalls(iteration, useMoveForMovingObjects) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, wallInitFBO);
         gl.viewport(0, 0, canvas.width, canvas.height);
         
@@ -241,11 +282,24 @@ async function main() {
                 const boundaryWallsLoc = gl.getUniformLocation(programs.wallInit, "u_enableBoundaryWalls");
                 gl.uniform1f(boundaryWallsLoc, 1.0);
                 gl.drawArrays(gl.TRIANGLES, 0, 6);
-            } else if (obj.type === 'object' && programs[obj.id]) {
-                // Object shaders
-                gl.useProgram(programs[obj.id]);
-                const resLoc = gl.getUniformLocation(programs[obj.id], "u_res");
-                gl.uniform2f(resLoc, canvas.width, canvas.height);
+            } else {
+                let programKey = null;
+
+                if (obj.type === 'moving' && useMoveForMovingObjects && obj.moveShader) {
+                    programKey = `${obj.id}_move`;
+                } else if (obj.instantiateShader) {
+                    programKey = `${obj.id}_instantiate`;
+                }
+
+                if (!programKey || !programs[programKey]) return;
+
+                gl.useProgram(programs[programKey]);
+                const resLoc = gl.getUniformLocation(programs[programKey], "u_res");
+                if (resLoc !== null) gl.uniform2f(resLoc, canvas.width, canvas.height);
+
+                const iterLoc = gl.getUniformLocation(programs[programKey], "u_iteration");
+                if (iterLoc !== null) gl.uniform1f(iterLoc, iteration);
+
                 gl.drawArrays(gl.TRIANGLES, 0, 6);
             }
         });
@@ -255,7 +309,9 @@ async function main() {
     }
 
     function resetSimulation() {
-        initializeWalls();
+        simulationIteration = 0;
+        initializeWalls(simulationIteration, false);
+        copyWallsToPrev();
         initializeState(ping);
         initializeState(pong);
 
@@ -325,7 +381,13 @@ async function main() {
                 stepBudget -= 1.0;
             }
 
-            runStep(gl, programs, readState, writeState, canvas, wallsTexture);
+            simulationIteration += 1;
+            if (hasEnabledMovingObjects()) {
+                copyWallsToPrev();
+                initializeWalls(simulationIteration, true);
+            }
+
+            runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture);
 
             const temp = readState;
             readState = writeState;
