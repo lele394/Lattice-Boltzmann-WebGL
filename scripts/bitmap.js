@@ -6,7 +6,8 @@ export function createCustomBitmapState() {
         width: 0,
         height: 0,
         loaded: false,
-        fileName: ''
+        fileName: '',
+        sourceDataUrl: null
     };
 }
 
@@ -15,11 +16,30 @@ export function clearCustomBitmapState(gl, customBitmapState) {
     customBitmapState.width = 0;
     customBitmapState.height = 0;
     customBitmapState.fileName = '';
+    customBitmapState.sourceDataUrl = null;
 
     if (customBitmapState.texture) {
         gl.deleteTexture(customBitmapState.texture);
         customBitmapState.texture = null;
     }
+}
+
+function decodeImageFromSource(source) {
+    return new Promise((resolve, reject) => {
+        const imageElement = new Image();
+        imageElement.onload = () => resolve(imageElement);
+        imageElement.onerror = () => reject(new Error('Failed to decode image.'));
+        imageElement.src = source;
+    });
+}
+
+function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('Failed to read file as data URL.'));
+        reader.readAsDataURL(file);
+    });
 }
 
 function buildMaskFromImage(imageElement) {
@@ -79,19 +99,16 @@ function uploadMaskTexture(gl, customBitmapState, width, height, maskData) {
 export async function loadCustomBitmapFromFile(gl, customBitmapState, file) {
     if (!file) return;
 
-    const objectUrl = URL.createObjectURL(file);
-    try {
-        const imageElement = new Image();
-        const loaded = await new Promise((resolve, reject) => {
-            imageElement.onload = () => resolve(imageElement);
-            imageElement.onerror = () => reject(new Error('Failed to decode image.'));
-            imageElement.src = objectUrl;
-        });
+    const dataUrl = await readFileAsDataUrl(file);
+    await loadCustomBitmapFromDataUrl(gl, customBitmapState, dataUrl, file.name);
+}
 
-        const { width, height, maskData } = buildMaskFromImage(loaded);
-        uploadMaskTexture(gl, customBitmapState, width, height, maskData);
-        customBitmapState.fileName = file.name;
-    } finally {
-        URL.revokeObjectURL(objectUrl);
-    }
+export async function loadCustomBitmapFromDataUrl(gl, customBitmapState, dataUrl, fileName = 'Cached Bitmap') {
+    if (!dataUrl) return;
+
+    const loaded = await decodeImageFromSource(dataUrl);
+    const { width, height, maskData } = buildMaskFromImage(loaded);
+    uploadMaskTexture(gl, customBitmapState, width, height, maskData);
+    customBitmapState.fileName = fileName;
+    customBitmapState.sourceDataUrl = dataUrl;
 }

@@ -2,7 +2,7 @@ import { setupBuffers, createWallsTexture } from './inits.js';
 import { createFBO, createWallInitFBO } from './fbo.js';
 import { setupQuad } from './shader_helper.js';
 import { shadersCompiler } from './shader_helper.js';
-import { BITMAP_TEXTURE_UNIT, createCustomBitmapState, clearCustomBitmapState, loadCustomBitmapFromFile as loadCustomBitmapFromFileHelper } from './bitmap.js';
+import { BITMAP_TEXTURE_UNIT, createCustomBitmapState, clearCustomBitmapState, loadCustomBitmapFromFile as loadCustomBitmapFromFileHelper, loadCustomBitmapFromDataUrl as loadCustomBitmapFromDataUrlHelper } from './bitmap.js';
 
 // Settings Cache Manager
 const SettingsCache = {
@@ -31,6 +31,7 @@ const SettingsCache = {
                     values: settings.initialization.values
                 },
                 customBitmapOptions: settings.customBitmapOptions,
+                customBitmapCache: settings.customBitmapCache,
                 wallObjects: settings.wallObjects
                     .filter(obj => obj.id !== 'boundaryWalls')
                     .map(obj => ({
@@ -133,7 +134,7 @@ const simpleObjects = [
             { key: 'centerX', label: 'X Position', uniform: 'u_centerX', value: 0.5, step: 0.01, min: 0.0, max: 1.0 },
             { key: 'centerY', label: 'Y Position', uniform: 'u_centerY', value: 0.5, step: 0.01, min: 0.0, max: 1.0 },
             { key: 'scale', label: 'Scale', uniform: 'u_scale', value: 1.0, step: 0.01, min: 0.01, max: 4.0 },
-            { key: 'rotation', label: 'Rotation (deg)', uniform: 'u_rotation', value: 0, step: 1, min: 0, max: 360, isAngle: true }
+            { key: 'rotation', label: 'Rotation (deg)', uniform: 'u_rotation', value: 0, step: 1, min: -360, max: 360, isAngle: true }
         ]
     }
 ];
@@ -487,6 +488,11 @@ async function main() {
         invertMask: false
     };
 
+    const customBitmapCache = {
+        dataUrl: null,
+        fileName: ''
+    };
+
     const initialization = {
         selectedModeId: 'uniform',
         values: {}
@@ -505,6 +511,7 @@ async function main() {
         boundaryModeParamsValues,
         simpleObject,
         customBitmapOptions,
+        customBitmapCache,
         canvasDimensions,
         visualization,
         initialization,
@@ -529,6 +536,9 @@ async function main() {
         }
         if (cachedSettings.customBitmapOptions) {
             Object.assign(customBitmapOptions, cachedSettings.customBitmapOptions);
+        }
+        if (cachedSettings.customBitmapCache) {
+            Object.assign(customBitmapCache, cachedSettings.customBitmapCache);
         }
         if (cachedSettings.canvasDimensions) {
             // Dimensions already applied to canvas, just update the object
@@ -574,12 +584,33 @@ async function main() {
         if (!file) return;
 
         await loadCustomBitmapFromFileHelper(gl, customBitmapState, file);
+        customBitmapCache.dataUrl = customBitmapState.sourceDataUrl;
+        customBitmapCache.fileName = customBitmapState.fileName;
         simpleObject.selected = 'customBitmap';
         const simpleObjectSelect = document.getElementById('simple-object-select');
         if (simpleObjectSelect) simpleObjectSelect.value = 'customBitmap';
         renderSimpleObjectParams();
         resetSimulation();
         SettingsCache.save(settings);
+    }
+
+    async function restoreCustomBitmapFromCache() {
+        if (!customBitmapCache.dataUrl) return;
+
+        try {
+            await loadCustomBitmapFromDataUrlHelper(
+                gl,
+                customBitmapState,
+                customBitmapCache.dataUrl,
+                customBitmapCache.fileName || 'Cached Bitmap'
+            );
+        } catch (error) {
+            console.warn('Failed to restore cached custom bitmap:', error);
+            clearCustomBitmapState(gl, customBitmapState);
+            customBitmapCache.dataUrl = null;
+            customBitmapCache.fileName = '';
+            SettingsCache.save(settings);
+        }
     }
 
     function renderInitializationParams() {
@@ -831,8 +862,11 @@ async function main() {
             clearButton.textContent = 'Clear Bitmap';
             clearButton.addEventListener('click', () => {
                 clearCustomBitmapState(gl, customBitmapState);
+                customBitmapCache.dataUrl = null;
+                customBitmapCache.fileName = '';
                 renderSimpleObjectParams();
                 resetSimulation();
+                SettingsCache.save(settings);
             });
 
             clearRow.appendChild(clearButton);
@@ -1284,6 +1318,8 @@ async function main() {
             SettingsCache.save(settings);
         });
     }
+
+    await restoreCustomBitmapFromCache();
 
     initializeInitializationUi();
     initializeSimpleObjectUi();
