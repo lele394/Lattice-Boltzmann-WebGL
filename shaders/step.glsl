@@ -314,6 +314,23 @@ void main() {
         outQ9 = mix(outQ9, eqQ9, absorb);
     }
 
+    // Airflow tunnel: apply absorption layer on LEFT edge (outflow) to prevent reflections
+    if (isAirflowTunnel) {
+        // Only apply absorption on the left side (x < some threshold)
+        float leftDistPx = v_uv.x * u_res.x;
+        float spongeWidthPx = 32.0;
+        float leftFactor = clamp((spongeWidthPx - leftDistPx) / spongeWidthPx, 0.0, 1.0);
+        float absorb = leftFactor * leftFactor;
+        
+        vec4 eqQ1Q4 = vec4(1.0/9.0, 1.0/9.0, 1.0/9.0, 1.0/9.0);
+        vec4 eqQ5Q8 = vec4(1.0/36.0, 1.0/36.0, 1.0/36.0, 1.0/36.0);
+        float eqQ9 = 4.0/9.0;
+        
+        outQ1Q4 = mix(outQ1Q4, eqQ1Q4, absorb);
+        outQ5Q8 = mix(outQ5Q8, eqQ5Q8, absorb);
+        outQ9 = mix(outQ9, eqQ9, absorb);
+    }
+
     out_Q1Q4 = outQ1Q4;
     out_Q5Q8 = outQ5Q8;
     out_Q9 = outQ9;
