@@ -24,7 +24,7 @@ void main() {
     For the wall stuff, maybe can avoide redoing the whole matrix math after that.
     */
 
-    float tau = 0.7; // Relaxation time (must be > 0.5 for stability, higher = more viscous)
+    float tau = 0.6; // Relaxation time (must be > 0.5 for stability, higher = more viscous)
     vec2 px = 1.0 / u_res;
 
     // --- STREAMING (PULL) ---

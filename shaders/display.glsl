@@ -32,6 +32,9 @@ uniform sampler2D u_Q5Q8;
 uniform sampler2D u_Q9;
 uniform sampler2D u_walls;
 uniform vec2 u_res;
+uniform float u_visualizationMode;
+uniform vec2 u_densityRange;
+uniform vec2 u_velocityRange;
 
 in vec2 v_uv;
 out vec4 outColor;
@@ -64,9 +67,9 @@ vec3 gist_ncar(float t) {
     return mix(c6, c7, (t - 6.0 / 7.0) * 7.0);
 }
 
-vec3 density_heatmap(float rho) {
-    float t = clamp((rho - 1.0) / 0.6, 0.0, 1.0);
-    return gist_ncar(t);
+float normalizeInRange(float value, vec2 rangeMinMax) {
+    float span = max(rangeMinMax.y - rangeMinMax.x, 1e-6);
+    return clamp((value - rangeMinMax.x) / span, 0.0, 1.0);
 }
 
 void main() {
@@ -74,7 +77,7 @@ void main() {
     vec4 wallData = texture(u_walls, v_uv);
     if (wallData.r > 0.5) {
         // Display walls in black
-        outColor = vec4(1.0f, 1.0f, 0.0f, 1.0f);
+        outColor = vec4(1.0, 1.0, 0.0, 1.0);
         return;
     }
     
@@ -104,8 +107,10 @@ void main() {
     // vec3 speedCol = heatmap(speed * 5.0); 
     // vec3 speedCol = heatmap(speed * dilation / (1.0 + speed * dilation)); 
 
-    vec3 densCol = density_heatmap(rho);
+    float densityT = normalizeInRange(rho, u_densityRange);
+    float velocityT = normalizeInRange(speed, u_velocityRange);
+    float useVelocity = step(0.5, u_visualizationMode);
+    float t = mix(densityT, velocityT, useVelocity);
 
-    // outColor = vec4(speedCol, 1.0);
-    outColor = vec4(densCol, 1.0);
+    outColor = vec4(gist_ncar(t), 1.0);
 }

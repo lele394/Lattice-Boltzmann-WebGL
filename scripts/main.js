@@ -32,11 +32,33 @@ const wallObjects = [
 const shaderConfig = {
     vs: 'shaders/vert.glsl',
     init: 'shaders/init/inkDrop.frag',
+    initUniform: 'shaders/init/uniform.frag',
     step: 'shaders/step.glsl',
     display: 'shaders/display.glsl',
     wallInit: 'shaders/init/walls.frag',
     wallsCopy: 'shaders/wallsCopy.frag'
 };
+
+const initializationModes = [
+    {
+        id: 'inkDrop',
+        name: 'Ink Drop',
+        programKey: 'init',
+        params: [
+            { key: 'inkDropX', label: 'Ink X', uniform: 'u_centerX', value: 0.85, step: 0.01, min: 0.0, max: 1.0 },
+            { key: 'inkDropY', label: 'Ink Y', uniform: 'u_centerY', value: 0.65, step: 0.01, min: 0.0, max: 1.0 },
+            { key: 'inkDropTopDensity', label: 'Top Density', uniform: 'u_topDensity', value: 1.6, step: 0.01, min: 1.0, max: 5.0 }
+        ]
+    },
+    {
+        id: 'uniform',
+        name: 'Uniform',
+        programKey: 'initUniform',
+        params: [
+            { key: 'uniformDensity', label: 'Density', uniform: 'u_uniformDensity', value: 1.0, step: 0.01, min: 0.1, max: 5.0 }
+        ]
+    }
+];
 
 // Add object shaders to config
 wallObjects.forEach(obj => {
@@ -112,7 +134,7 @@ function runStep(gl, programs, readState, writeState, canvas, wallsTexture, prev
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 }
 
-function drawDisplay(gl, programs, stateToDisplay, canvas, wallsTexture) {
+function drawDisplay(gl, programs, stateToDisplay, canvas, wallsTexture, visualization) {
     gl.useProgram(programs.display);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
@@ -121,6 +143,15 @@ function drawDisplay(gl, programs, stateToDisplay, canvas, wallsTexture) {
     
     const resLocDisp = gl.getUniformLocation(programs.display, "u_res");
     if (resLocDisp !== null) gl.uniform2f(resLocDisp, canvas.width, canvas.height);
+
+    const modeLoc = gl.getUniformLocation(programs.display, "u_visualizationMode");
+    if (modeLoc !== null) gl.uniform1f(modeLoc, visualization.showVelocity ? 1.0 : 0.0);
+
+    const densityRangeLoc = gl.getUniformLocation(programs.display, "u_densityRange");
+    if (densityRangeLoc !== null) gl.uniform2f(densityRangeLoc, visualization.densityMin, visualization.densityMax);
+
+    const velocityRangeLoc = gl.getUniformLocation(programs.display, "u_velocityRange");
+    if (velocityRangeLoc !== null) gl.uniform2f(velocityRangeLoc, visualization.velocityMin, visualization.velocityMax);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 }
@@ -168,7 +199,7 @@ async function main() {
     const prevWallFBO = createWallInitFBO(gl, prevWallsTexture);
 
     // Single bind cuz everyone uses it
-    const programsToSetup = ['init', 'step', 'display', 'wallInit', 'wallsCopy'];
+    const programsToSetup = ['init', 'initUniform', 'step', 'display', 'wallInit', 'wallsCopy'];
     // Add all object shader programs
     wallObjects.forEach(obj => {
         if (obj.instantiateShader) {
@@ -221,6 +252,17 @@ async function main() {
     const stepBtn = document.getElementById('step-btn');
     const resetBtn = document.getElementById('reset-btn');
     const stepRateInput = document.getElementById('step-rate-input');
+    const initTypeSelect = document.getElementById('init-type-select');
+    const initParamsContainer = document.getElementById('init-params-container');
+    const vizVelocityToggle = document.getElementById('viz-velocity-toggle');
+    const densityMinSlider = document.getElementById('density-min-slider');
+    const densityMaxSlider = document.getElementById('density-max-slider');
+    const densityRangeFill = document.getElementById('density-range-fill');
+    const densityRangeValue = document.getElementById('density-range-value');
+    const velocityMinSlider = document.getElementById('velocity-min-slider');
+    const velocityMaxSlider = document.getElementById('velocity-max-slider');
+    const velocityRangeFill = document.getElementById('velocity-range-fill');
+    const velocityRangeValue = document.getElementById('velocity-range-value');
     const simStatus = document.getElementById('sim-status');
 
     const simControl = {
@@ -229,16 +271,155 @@ async function main() {
         maxStepsPerSecond: 60
     };
 
+    const visualization = {
+        showVelocity: false,
+        densityMin: 1.0,
+        densityMax: 1.6,
+        velocityMin: 0.0,
+        velocityMax: 0.2
+    };
+
+    const initialization = {
+        selectedModeId: 'inkDrop',
+        values: {}
+    };
+
+    initializationModes.forEach(mode => {
+        mode.params.forEach(param => {
+            initialization.values[param.key] = param.value;
+        });
+    });
+
+    function clampValue(value, minValue, maxValue) {
+        return Math.min(maxValue, Math.max(minValue, value));
+    }
+
+    function getSelectedInitializationMode() {
+        return initializationModes.find(mode => mode.id === initialization.selectedModeId) || initializationModes[0];
+    }
+
+    function renderInitializationParams() {
+        if (!initParamsContainer) return;
+        initParamsContainer.innerHTML = '';
+
+        const mode = getSelectedInitializationMode();
+        mode.params.forEach(param => {
+            const row = document.createElement('div');
+            row.className = 'row';
+
+            const label = document.createElement('label');
+            label.htmlFor = `init-param-${param.key}`;
+            label.textContent = param.label;
+
+            const input = document.createElement('input');
+            input.id = `init-param-${param.key}`;
+            input.type = 'number';
+            input.step = String(param.step);
+            input.min = String(param.min);
+            input.max = String(param.max);
+            input.value = String(initialization.values[param.key]);
+
+            input.addEventListener('change', () => {
+                const parsed = Number(input.value);
+                const fallback = initialization.values[param.key];
+                const numeric = Number.isFinite(parsed) ? parsed : fallback;
+                const clamped = clampValue(numeric, param.min, param.max);
+                initialization.values[param.key] = clamped;
+                input.value = String(clamped);
+            });
+
+            row.appendChild(label);
+            row.appendChild(input);
+            initParamsContainer.appendChild(row);
+        });
+    }
+
+    function initializeInitializationUi() {
+        if (!initTypeSelect) return;
+
+        initTypeSelect.innerHTML = '';
+        initializationModes.forEach(mode => {
+            const option = document.createElement('option');
+            option.value = mode.id;
+            option.textContent = mode.name;
+            initTypeSelect.appendChild(option);
+        });
+
+        initTypeSelect.value = initialization.selectedModeId;
+        initTypeSelect.addEventListener('change', () => {
+            initialization.selectedModeId = initTypeSelect.value;
+            renderInitializationParams();
+        });
+
+        renderInitializationParams();
+    }
+
+    function setupDualSlider(minSlider, maxSlider, valueLabel, fillElement, onChange) {
+        if (!minSlider || !maxSlider) return;
+
+        const updateLabel = (minValue, maxValue) => {
+            if (valueLabel) valueLabel.textContent = `${minValue.toFixed(3)} – ${maxValue.toFixed(3)}`;
+        };
+
+        const updateFromSliders = (movedMinSlider) => {
+            let minValue = Number(minSlider.value);
+            let maxValue = Number(maxSlider.value);
+
+            if (minValue > maxValue) {
+                if (movedMinSlider) {
+                    maxValue = minValue;
+                } else {
+                    minValue = maxValue;
+                }
+            }
+
+            minSlider.value = String(minValue);
+            maxSlider.value = String(maxValue);
+            updateLabel(minValue, maxValue);
+
+            const sliderMin = Number(minSlider.min);
+            const sliderMax = Number(minSlider.max);
+            const span = Math.max(sliderMax - sliderMin, 1e-6);
+            const minPct = ((minValue - sliderMin) / span) * 100.0;
+            const maxPct = ((maxValue - sliderMin) / span) * 100.0;
+
+            if (fillElement && fillElement.parentElement) {
+                fillElement.parentElement.style.setProperty('--range-min', `${minPct}%`);
+                fillElement.parentElement.style.setProperty('--range-max', `${maxPct}%`);
+            }
+
+            onChange(minValue, maxValue);
+        };
+
+        minSlider.addEventListener('input', () => updateFromSliders(true));
+        maxSlider.addEventListener('input', () => updateFromSliders(false));
+
+        updateFromSliders(true);
+    }
+
     let readState = ping;
     let writeState = pong;
     let lastTimeMs = 0;
     let stepBudget = 0;
     let simulationIteration = 0;
 
+    function applyInitializationUniforms(program, mode) {
+        mode.params.forEach(param => {
+            const loc = gl.getUniformLocation(program, param.uniform);
+            if (loc !== null) {
+                gl.uniform1f(loc, initialization.values[param.key]);
+            }
+        });
+    }
+
     function initializeState(targetState) {
-        gl.useProgram(programs.init);
+        const mode = getSelectedInitializationMode();
+        const initProgram = programs[mode.programKey] || programs.init;
+
+        gl.useProgram(initProgram);
         gl.bindFramebuffer(gl.FRAMEBUFFER, targetState.fbo);
         gl.viewport(0, 0, canvas.width, canvas.height);
+        applyInitializationUniforms(initProgram, mode);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
 
@@ -321,7 +502,7 @@ async function main() {
         simControl.stepRequests = 0;
         lastTimeMs = 0;
 
-        drawDisplay(gl, programs, readState, canvas, wallsTexture);
+        drawDisplay(gl, programs, readState, canvas, wallsTexture, visualization);
     }
 
     function updateUiStatus() {
@@ -356,6 +537,24 @@ async function main() {
             stepRateInput.value = String(sanitized);
         });
     }
+
+    initializeInitializationUi();
+
+    if (vizVelocityToggle) {
+        vizVelocityToggle.addEventListener('change', () => {
+            visualization.showVelocity = vizVelocityToggle.checked;
+        });
+    }
+
+    setupDualSlider(densityMinSlider, densityMaxSlider, densityRangeValue, densityRangeFill, (minValue, maxValue) => {
+        visualization.densityMin = minValue;
+        visualization.densityMax = maxValue;
+    });
+
+    setupDualSlider(velocityMinSlider, velocityMaxSlider, velocityRangeValue, velocityRangeFill, (minValue, maxValue) => {
+        visualization.velocityMin = minValue;
+        visualization.velocityMax = maxValue;
+    });
 
     updateUiStatus();
 
@@ -399,7 +598,7 @@ async function main() {
             stepBudget = maxStepsPerFrame;
         }
 
-        drawDisplay(gl, programs, readState, canvas, wallsTexture);
+        drawDisplay(gl, programs, readState, canvas, wallsTexture, visualization);
         requestAnimationFrame(frame);
     }
 

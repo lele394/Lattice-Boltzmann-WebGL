@@ -72,6 +72,16 @@
         padding: 4px 6px;
     }
 
+    #sim-controls select {
+        width: 120px;
+        background: #181a22;
+        color: #f2f2f2;
+        border: 1px solid #4a4f62;
+        border-radius: 6px;
+        padding: 4px 6px;
+        font-size: 13px;
+    }
+
     #sim-controls input[type="checkbox"] {
         cursor: pointer;
         width: 16px;
@@ -82,6 +92,103 @@
     #sim-controls label {
         font-size: 13px;
         white-space: nowrap;
+    }
+
+    #sim-controls .slider-block {
+        margin-bottom: 8px;
+    }
+
+    #sim-controls .slider-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 4px;
+    }
+
+    #sim-controls .slider-value {
+        font-size: 12px;
+        opacity: 0.9;
+        min-width: 90px;
+        text-align: right;
+    }
+
+    #sim-controls .dual-slider {
+        position: relative;
+        height: 18px;
+        --range-min: 0%;
+        --range-max: 100%;
+    }
+
+    #sim-controls .dual-slider-track {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        height: 6px;
+        border-radius: 999px;
+        background: #10141d;
+        border: 1px solid #2b3242;
+        pointer-events: none;
+    }
+
+    #sim-controls .dual-slider-fill {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: var(--range-min);
+        right: calc(100% - var(--range-max));
+        border-radius: 999px;
+        background: #4a4f62;
+        opacity: 0.95;
+        pointer-events: none;
+    }
+
+    #sim-controls .dual-slider input[type="range"] {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        background: none;
+        accent-color: #4a90e2;
+        pointer-events: none;
+        appearance: none;
+        -webkit-appearance: none;
+        height: 18px;
+    }
+
+    #sim-controls .dual-slider input[type="range"]::-webkit-slider-runnable-track {
+        background: transparent;
+        height: 6px;
+    }
+
+    #sim-controls .dual-slider input[type="range"]::-moz-range-track {
+        background: transparent;
+        height: 6px;
+    }
+
+    #sim-controls .dual-slider input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 1px solid #aeb6cc;
+        background: #d8def0;
+        margin-top: -4px;
+        pointer-events: auto;
+        cursor: pointer;
+    }
+
+    #sim-controls .dual-slider input[type="range"]::-moz-range-thumb {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 1px solid #aeb6cc;
+        background: #d8def0;
+        pointer-events: auto;
+        cursor: pointer;
     }
 
     #sim-status {
@@ -107,6 +214,40 @@
             <label for="step-rate-input">Steps/s</label>
             <input id="step-rate-input" type="number" min="1" max="2000" step="1" value="60">
         </div>
+        <div class="row">
+            <label for="init-type-select">Init</label>
+            <select id="init-type-select"></select>
+        </div>
+        <div id="init-params-container"></div>
+        <div class="row">
+            <input id="viz-velocity-toggle" type="checkbox">
+            <label for="viz-velocity-toggle">Velocity View</label>
+        </div>
+
+        <div class="slider-block">
+            <div class="slider-header">
+                <label>Density Range</label>
+                <span id="density-range-value" class="slider-value"></span>
+            </div>
+            <div class="dual-slider">
+                <div class="dual-slider-track"><div id="density-range-fill" class="dual-slider-fill"></div></div>
+                <input id="density-min-slider" type="range" min="0" max="3" step="0.001" value="1.0">
+                <input id="density-max-slider" type="range" min="0" max="3" step="0.001" value="1.6">
+            </div>
+        </div>
+
+        <div class="slider-block">
+            <div class="slider-header">
+                <label>Velocity Range</label>
+                <span id="velocity-range-value" class="slider-value"></span>
+            </div>
+            <div class="dual-slider">
+                <div class="dual-slider-track"><div id="velocity-range-fill" class="dual-slider-fill"></div></div>
+                <input id="velocity-min-slider" type="range" min="0" max="3" step="0.001" value="0.0">
+                <input id="velocity-max-slider" type="range" min="0" max="3" step="0.001" value="0.2">
+            </div>
+        </div>
+
         <div id="wall-objects-container">
             <!-- Wall object checkboxes will be generated here -->
         </div>
