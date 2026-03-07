@@ -272,7 +272,12 @@ function runStep(gl, programs, readState, writeState, canvas, wallsTexture, prev
     // Pass tunnel velocity parameter
     const tunnelVelLoc = gl.getUniformLocation(programs.step, "u_tunnelVelocity");
     if (tunnelVelLoc !== null) {
-        gl.uniform1f(tunnelVelLoc, boundaryModeParamsValues.actualAirflow ?? 0.0);
+        const targetAirflow = boundaryModeParamsValues.airflowTunnel?.tunnelVelocity ?? 0.0;
+        const actualAirflow = boundaryModeParamsValues.actualAirflow;
+        const airflow = (boundaryMode.current === 'airflowTunnel')
+            ? (Number.isFinite(actualAirflow) ? actualAirflow : targetAirflow)
+            : 0.0;
+        gl.uniform1f(tunnelVelLoc, airflow);
     }
     
     gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -485,9 +490,7 @@ async function main() {
     };
 
     // Track actual airflow velocity (separate from target setting)
-    // This gradually changes towards the target to prevent instability
     let actualAirflowVelocity = 0.0;
-    const AIRFLOW_RAMP_RATE = 0.00005; // 
 
     // Initialize boundary mode parameters
     Object.keys(boundaryModeParams).forEach(modeKey => {
@@ -1252,7 +1255,10 @@ async function main() {
         lastTimeMs = 0;
         
         // Reset actual airflow velocity
-        actualAirflowVelocity = 0.0;
+        actualAirflowVelocity = (boundaryMode.current === 'airflowTunnel')
+            ? (boundaryModeParamsValues.airflowTunnel?.tunnelVelocity ?? 0.0)
+            : 0.0;
+        boundaryModeParamsValues.actualAirflow = actualAirflowVelocity;
         updateVelocityDisplay();
 
         drawDisplay(gl, programs, readState, canvas, wallsTexture, visualization);
@@ -1878,6 +1884,15 @@ async function main() {
         const dt = (timeMs - lastTimeMs) / 1000.0;
         lastTimeMs = timeMs;
 
+        // Keep airflow state synchronized even when paused/no step happens.
+        if (boundaryMode.current === 'airflowTunnel') {
+            actualAirflowVelocity = boundaryModeParamsValues.airflowTunnel?.tunnelVelocity ?? 0.0;
+        } else {
+            actualAirflowVelocity = 0.0;
+        }
+        boundaryModeParamsValues.actualAirflow = actualAirflowVelocity;
+        updateVelocityDisplay();
+
         if (simControl.isPlaying) {
             stepBudget += dt * simControl.maxStepsPerSecond;
         }
@@ -1897,21 +1912,6 @@ async function main() {
                 copyWallsToPrev();
                 initializeWalls(simulationIteration, true);
             }
-
-            // Gradually adjust actual airflow velocity towards target
-            if (boundaryMode.current === 'airflowTunnel') {
-                const targetVelocity = boundaryModeParamsValues.airflowTunnel?.tunnelVelocity ?? 0.0;
-                const diff = targetVelocity - actualAirflowVelocity;
-                if (Math.abs(diff) < AIRFLOW_RAMP_RATE) {
-                    actualAirflowVelocity = targetVelocity;
-                } else {
-                    actualAirflowVelocity += Math.sign(diff) * AIRFLOW_RAMP_RATE;
-                }
-            } else {
-                // Reset to zero when not in airflow tunnel mode
-                actualAirflowVelocity = 0.0;
-            }
-            boundaryModeParamsValues.actualAirflow = actualAirflowVelocity;
 
             runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture, boundaryMode, boundaryModeParamsValues);
 

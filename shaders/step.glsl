@@ -11,9 +11,9 @@ layout(location = 0) out vec4 out_Q1Q4;
 layout(location = 1) out vec4 out_Q5Q8;
 layout(location = 2) out float out_Q9;
 
-// For open boundaries and airflow tunnel: equilibrium population calculation with velocity
-float equilibriumPop(int dir, float u, float v) {
-    float rho0 = 1.0;
+// Equilibrium population for D2Q9 using current ordering:
+// 0, E(1), N(2), W(3), S(4), NE(5), NW(6), SW(7), SE(8)
+float equilibriumPop(int dir, float rho0, float u, float v) {
     float uu = u*u + v*v;
     
     if (dir == 0) {
@@ -69,13 +69,10 @@ void main() {
 
     // --- STREAMING (PULL) ---
     // Pull from the opposite direction
-    // For open boundaries:
-    //   - Incoming: Cells pull from outside -> use equilibrium (rho=1, u=0)
-    //   - Outgoing: Populations streaming out aren't pulled by anyone -> destroyed
-    // For airflow tunnel:
-    //   - Right edge: inject leftward velocity (inflow)
-    //   - Left edge: open outflow
-    //   - Top/bottom: walls (handled by wall texture)
+    // Boundary treatment in this pass:
+    // - Open mode: Zou/He pressure boundaries (rho=1) on all sides
+    // - Airflow tunnel: right velocity inlet (u_tunnelVelocity), left pressure outlet (rho=1)
+    //   Top/bottom remain walls via wall texture
     bool isOpenMode = u_boundaryMode > 1.5 && u_boundaryMode < 2.5;  // Only 'open' mode
     bool isAirflowTunnel = u_boundaryMode > 2.9 && u_boundaryMode < 3.1;
     
@@ -89,52 +86,15 @@ void main() {
     vec2 uv7 = v_uv + vec2( px.x,  px.y); // Pull SW from NE
     vec2 uv8 = v_uv + vec2(-px.x,  px.y); // Pull SE from NW
     
-    // For standard open mode: all boundaries are open
-    // For airflow tunnel: only left/right are open, top/bottom are walls
-    bool out1, out2, out3, out4, out5, out6, out7, out8;
-    
-    if (isAirflowTunnel) {
-        // Airflow tunnel: left/right open, top/bottom closed (walls)
-        out1 = (uv1.x <= 0.0 || uv1.x >= 1.0);
-        out2 = false;  // Top/bottom handled by walls
-        out3 = (uv3.x <= 0.0 || uv3.x >= 1.0);
-        out4 = false;  // Top/bottom handled by walls
-        out5 = (uv5.x <= 0.0 || uv5.x >= 1.0);
-        out6 = (uv6.x <= 0.0 || uv6.x >= 1.0);
-        out7 = (uv7.x <= 0.0 || uv7.x >= 1.0);
-        out8 = (uv8.x <= 0.0 || uv8.x >= 1.0);
-    } else {
-        // Open mode: all boundaries open
-        out1 = isOpenMode && (uv1.x <= 0.0 || uv1.x >= 1.0 || uv1.y <= 0.0 || uv1.y >= 1.0);
-        out2 = isOpenMode && (uv2.x <= 0.0 || uv2.x >= 1.0 || uv2.y <= 0.0 || uv2.y >= 1.0);
-        out3 = isOpenMode && (uv3.x <= 0.0 || uv3.x >= 1.0 || uv3.y <= 0.0 || uv3.y >= 1.0);
-        out4 = isOpenMode && (uv4.x <= 0.0 || uv4.x >= 1.0 || uv4.y <= 0.0 || uv4.y >= 1.0);
-        out5 = isOpenMode && (uv5.x <= 0.0 || uv5.x >= 1.0 || uv5.y <= 0.0 || uv5.y >= 1.0);
-        out6 = isOpenMode && (uv6.x <= 0.0 || uv6.x >= 1.0 || uv6.y <= 0.0 || uv6.y >= 1.0);
-        out7 = isOpenMode && (uv7.x <= 0.0 || uv7.x >= 1.0 || uv7.y <= 0.0 || uv7.y >= 1.0);
-        out8 = isOpenMode && (uv8.x <= 0.0 || uv8.x >= 1.0 || uv8.y <= 0.0 || uv8.y >= 1.0);
-    }
-    
-    // For airflow tunnel: inject velocity when pulling from RIGHT boundary (x >= 1.0)
-    // Directions pulling from right (uv.x >= 1.0): 3 (W), 6 (NW), 7 (SW)
-    float u_eq1 = 0.0;
-    float u_eq2 = 0.0;
-    float u_eq3 = (isAirflowTunnel && uv3.x >= 1.0) ? u_tunnelVelocity : 0.0;  // Pull W from right edge
-    float u_eq4 = 0.0;
-    float u_eq5 = 0.0;
-    float u_eq6 = (isAirflowTunnel && uv6.x >= 1.0) ? u_tunnelVelocity : 0.0;  // Pull NW from right edge
-    float u_eq7 = (isAirflowTunnel && uv7.x >= 1.0) ? u_tunnelVelocity : 0.0;  // Pull SW from right edge
-    float u_eq8 = 0.0;
-    
     float f0 = texture(u_Q9,   uv0).r;
-    float f1 = out1 ? equilibriumPop(1, u_eq1, 0.0) : texture(u_Q1Q4, uv1).r;
-    float f2 = out2 ? equilibriumPop(2, u_eq2, 0.0) : texture(u_Q1Q4, uv2).g;
-    float f3 = out3 ? equilibriumPop(3, u_eq3, 0.0) : texture(u_Q1Q4, uv3).b;
-    float f4 = out4 ? equilibriumPop(4, u_eq4, 0.0) : texture(u_Q1Q4, uv4).a;
-    float f5 = out5 ? equilibriumPop(5, u_eq5, 0.0) : texture(u_Q5Q8, uv5).r;
-    float f6 = out6 ? equilibriumPop(6, u_eq6, 0.0) : texture(u_Q5Q8, uv6).g;
-    float f7 = out7 ? equilibriumPop(7, u_eq7, 0.0) : texture(u_Q5Q8, uv7).b;
-    float f8 = out8 ? equilibriumPop(8, u_eq8, 0.0) : texture(u_Q5Q8, uv8).a;
+    float f1 = texture(u_Q1Q4, uv1).r;
+    float f2 = texture(u_Q1Q4, uv2).g;
+    float f3 = texture(u_Q1Q4, uv3).b;
+    float f4 = texture(u_Q1Q4, uv4).a;
+    float f5 = texture(u_Q5Q8, uv5).r;
+    float f6 = texture(u_Q5Q8, uv6).g;
+    float f7 = texture(u_Q5Q8, uv7).b;
+    float f8 = texture(u_Q5Q8, uv8).a;
 
     vec4 wallData = texture(u_walls, v_uv);
     vec4 prevWallData = texture(u_prevWalls, v_uv);
@@ -142,6 +102,76 @@ void main() {
     float wallVelX = wallData.g;
     float wallVelY = wallData.b;
     float wasWall = prevWallData.r;
+
+    // --- ZOU/HE BOUNDARIES (before macro/collision) ---
+    // Apply only on fluid cells in boundary-driven modes.
+    if ((isOpenMode || isAirflowTunnel) && isWall <= 0.5) {
+        ivec2 cell = ivec2(gl_FragCoord.xy - vec2(0.5));
+        int nx = int(u_res.x + 0.5);
+        int ny = int(u_res.y + 0.5);
+        bool atLeft = (cell.x == 0);
+        bool atRight = (cell.x == nx - 1);
+        bool atBottom = (cell.y == 0);
+        bool atTop = (cell.y == ny - 1);
+
+        if (isAirflowTunnel) {
+            if (atRight) {
+                // Right boundary: velocity inlet (unknown: f3, f6, f7)
+                float ux = u_tunnelVelocity;
+                float uy = 0.0;
+                float rhoBC = (f0 + f2 + f4 + 2.0 * (f1 + f5 + f8)) / (1.0 + ux);
+
+                f3 = f1 - (2.0 / 3.0) * rhoBC * ux;
+                f6 = f8 + 0.5 * (f4 - f2) + 0.5 * rhoBC * uy - (1.0 / 6.0) * rhoBC * ux;
+                f7 = f5 + 0.5 * (f2 - f4) - 0.5 * rhoBC * uy - (1.0 / 6.0) * rhoBC * ux;
+            } else if (atLeft) {
+                // Left boundary: pressure outlet rho=1 (unknown: f1, f5, f8)
+                float rhoBC = 1.0;
+                float ux = 1.0 - (f0 + f2 + f4 + 2.0 * (f3 + f6 + f7)) / rhoBC;
+                float uy = 0.0;
+
+                f1 = f3 + (2.0 / 3.0) * rhoBC * ux;
+                f5 = f7 + 0.5 * (f4 - f2) + 0.5 * rhoBC * uy + (1.0 / 6.0) * rhoBC * ux;
+                f8 = f6 + 0.5 * (f2 - f4) - 0.5 * rhoBC * uy + (1.0 / 6.0) * rhoBC * ux;
+            }
+        } else if (isOpenMode) {
+            // Open mode: pressure boundaries rho=1 on all edges.
+            // At corners, use x-boundary priority (left/right), then y-boundary.
+            if (atLeft) {
+                float rhoBC = 1.0;
+                float ux = 1.0 - (f0 + f2 + f4 + 2.0 * (f3 + f6 + f7)) / rhoBC;
+                float uy = 0.0;
+
+                f1 = f3 + (2.0 / 3.0) * rhoBC * ux;
+                f5 = f7 + 0.5 * (f4 - f2) + 0.5 * rhoBC * uy + (1.0 / 6.0) * rhoBC * ux;
+                f8 = f6 + 0.5 * (f2 - f4) - 0.5 * rhoBC * uy + (1.0 / 6.0) * rhoBC * ux;
+            } else if (atRight) {
+                float rhoBC = 1.0;
+                float ux = -1.0 + (f0 + f2 + f4 + 2.0 * (f1 + f5 + f8)) / rhoBC;
+                float uy = 0.0;
+
+                f3 = f1 - (2.0 / 3.0) * rhoBC * ux;
+                f6 = f8 + 0.5 * (f4 - f2) + 0.5 * rhoBC * uy - (1.0 / 6.0) * rhoBC * ux;
+                f7 = f5 + 0.5 * (f2 - f4) - 0.5 * rhoBC * uy - (1.0 / 6.0) * rhoBC * ux;
+            } else if (atBottom) {
+                float rhoBC = 1.0;
+                float ux = 0.0;
+                float uy = 1.0 - (f0 + f1 + f3 + 2.0 * (f4 + f7 + f8)) / rhoBC;
+
+                f2 = f4 + (2.0 / 3.0) * rhoBC * uy;
+                f5 = f7 + 0.5 * (f3 - f1) + 0.5 * rhoBC * ux + (1.0 / 6.0) * rhoBC * uy;
+                f6 = f8 + 0.5 * (f1 - f3) - 0.5 * rhoBC * ux + (1.0 / 6.0) * rhoBC * uy;
+            } else if (atTop) {
+                float rhoBC = 1.0;
+                float ux = 0.0;
+                float uy = -1.0 + (f0 + f1 + f3 + 2.0 * (f2 + f5 + f6)) / rhoBC;
+
+                f4 = f2 - (2.0 / 3.0) * rhoBC * uy;
+                f7 = f5 + 0.5 * (f1 - f3) - 0.5 * rhoBC * ux - (1.0 / 6.0) * rhoBC * uy;
+                f8 = f6 + 0.5 * (f3 - f1) + 0.5 * rhoBC * ux - (1.0 / 6.0) * rhoBC * uy;
+            }
+        }
+    }
 
     float rho = f0 + f1 + f2 + f3 + f4 + f5 + f6 + f7 + f8;
 
