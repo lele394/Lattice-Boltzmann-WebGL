@@ -4,6 +4,23 @@ import { setupQuad } from './shader_helper.js';
 import { shadersCompiler } from './shader_helper.js';
 
 
+// Wall Objects Registry
+const wallObjects = [
+    {
+        id: 'boundaryWalls',
+        name: 'Boundary Walls',
+        enabled: true,
+        type: 'builtin' // Built into walls.frag
+    },
+    {
+        id: 'fourCircles',
+        name: 'Four Circles',
+        enabled: false,
+        type: 'object',
+        shader: 'shaders/objects/fourCircles.frag'
+    }
+];
+
 const shaderConfig = {
     vs: 'shaders/vert.glsl',
     init: 'shaders/init/inkDrop.frag',
@@ -11,6 +28,13 @@ const shaderConfig = {
     display: 'shaders/display.glsl',
     wallInit: 'shaders/init/walls.frag'
 };
+
+// Add object shaders to config
+wallObjects.forEach(obj => {
+    if (obj.type === 'object' && obj.shader) {
+        shaderConfig[obj.id] = obj.shader;
+    }
+});
 
 
 
@@ -124,22 +148,55 @@ async function main() {
 
     // Single bind cuz everyone uses it
     const programsToSetup = ['init', 'step', 'display', 'wallInit'];
+    // Add all object shader programs
+    wallObjects.forEach(obj => {
+        if (obj.type === 'object') {
+            programsToSetup.push(obj.id);
+        }
+    });
+    
     for (let p of programsToSetup) {
-        gl.useProgram(programs[p]);
-        const posLoc = gl.getAttribLocation(programs[p], "a_position");
-        gl.enableVertexAttribArray(posLoc);
-        gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
-        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+        if (programs[p]) {
+            gl.useProgram(programs[p]);
+            const posLoc = gl.getAttribLocation(programs[p], "a_position");
+            gl.enableVertexAttribArray(posLoc);
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+            gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+        }
     }
 
     const ping = { ...D2Q9_ping, fbo: fbo_ping };
     const pong = { ...D2Q9_pong, fbo: fbo_pong };
 
+    // Generate UI for wall objects
+    const wallObjectsContainer = document.getElementById('wall-objects-container');
+    wallObjects.forEach(obj => {
+        const row = document.createElement('div');
+        row.className = 'row';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `obj-${obj.id}`;
+        checkbox.checked = obj.enabled;
+        
+        const label = document.createElement('label');
+        label.htmlFor = `obj-${obj.id}`;
+        label.textContent = obj.name;
+        
+        row.appendChild(checkbox);
+        row.appendChild(label);
+        wallObjectsContainer.appendChild(row);
+        
+        // Update registry when checkbox changes
+        checkbox.addEventListener('change', () => {
+            obj.enabled = checkbox.checked;
+        });
+    });
+
     const playPauseBtn = document.getElementById('play-pause-btn');
     const stepBtn = document.getElementById('step-btn');
     const resetBtn = document.getElementById('reset-btn');
     const stepRateInput = document.getElementById('step-rate-input');
-    const boundaryWallsCheckbox = document.getElementById('boundary-walls-checkbox');
     const simStatus = document.getElementById('sim-status');
 
     const simControl = {
@@ -161,19 +218,40 @@ async function main() {
     }
 
     function initializeWalls() {
-        gl.useProgram(programs.wallInit);
         gl.bindFramebuffer(gl.FRAMEBUFFER, wallInitFBO);
         gl.viewport(0, 0, canvas.width, canvas.height);
         
-        const resLoc = gl.getUniformLocation(programs.wallInit, "u_res");
-        gl.uniform2f(resLoc, canvas.width, canvas.height);
+        // Clear wall texture first
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
         
-        // Pass boundary walls toggle state
-        const enableBoundaryWalls = boundaryWallsCheckbox ? (boundaryWallsCheckbox.checked ? 1.0 : 0.0) : 0.0;
-        const boundaryWallsLoc = gl.getUniformLocation(programs.wallInit, "u_enableBoundaryWalls");
-        gl.uniform1f(boundaryWallsLoc, enableBoundaryWalls);
+        // Enable additive blending so walls can composite
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE);
         
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        // Render each enabled wall object
+        wallObjects.forEach(obj => {
+            if (!obj.enabled) return;
+            
+            if (obj.type === 'builtin') {
+                // Built-in walls (via wallInit shader)
+                gl.useProgram(programs.wallInit);
+                const resLoc = gl.getUniformLocation(programs.wallInit, "u_res");
+                gl.uniform2f(resLoc, canvas.width, canvas.height);
+                const boundaryWallsLoc = gl.getUniformLocation(programs.wallInit, "u_enableBoundaryWalls");
+                gl.uniform1f(boundaryWallsLoc, 1.0);
+                gl.drawArrays(gl.TRIANGLES, 0, 6);
+            } else if (obj.type === 'object' && programs[obj.id]) {
+                // Object shaders
+                gl.useProgram(programs[obj.id]);
+                const resLoc = gl.getUniformLocation(programs[obj.id], "u_res");
+                gl.uniform2f(resLoc, canvas.width, canvas.height);
+                gl.drawArrays(gl.TRIANGLES, 0, 6);
+            }
+        });
+        
+        // Disable blending
+        gl.disable(gl.BLEND);
     }
 
     function resetSimulation() {

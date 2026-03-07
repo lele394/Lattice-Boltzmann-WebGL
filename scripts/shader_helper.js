@@ -58,11 +58,18 @@ export async function shadersCompiler(gl, shaderConfig) {
     const wallInitSource = await fetch(shaderConfig.wallInit).then(res => res.text());
 
     const programs = {
-        init:    createProgram(vsSource, initSource),
-        step:    createProgram(vsSource, stepSource),
+        init: createProgram(vsSource, initSource),
+        step: createProgram(vsSource, stepSource),
         display: createProgram(vsSource, displaySource),
         wallInit: createProgram(vsSource, wallInitSource)
     };
+
+    const reservedKeys = new Set(['vs', 'init', 'step', 'display', 'wallInit']);
+    for (const key of Object.keys(shaderConfig)) {
+        if (reservedKeys.has(key)) continue;
+        const fsSource = await fetch(shaderConfig[key]).then(res => res.text());
+        programs[key] = createProgram(vsSource, fsSource);
+    }
 
     return programs;
 }
