@@ -1,5 +1,5 @@
-import { setupBuffers } from './inits.js';
-import { createFBO } from './fbo.js';
+import { setupBuffers, createWallsTexture } from './inits.js';
+import { createFBO, createWallInitFBO } from './fbo.js';
 import { setupQuad } from './shader_helper.js';
 import { shadersCompiler } from './shader_helper.js';
 
@@ -8,7 +8,8 @@ const shaderConfig = {
     vs: 'shaders/vert.glsl',
     init: 'shaders/init/inkDrop.frag',
     step: 'shaders/step.glsl',
-    display: 'shaders/display.glsl'
+    display: 'shaders/display.glsl',
+    wallInit: 'shaders/init/walls.frag'
 };
 
 
@@ -29,7 +30,7 @@ async function grab() {
 
 
 
-function bindLBMTextures(gl, program, textures) {
+function bindLBMTextures(gl, program, textures, wallsTexture) {
     // Bind Q1Q4 to Unit 0
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, textures.Q1Q4);
@@ -44,17 +45,22 @@ function bindLBMTextures(gl, program, textures) {
     gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, textures.Q9);
     gl.uniform1i(gl.getUniformLocation(program, "u_Q9"), 2);
+
+    // Bind shared walls to Unit 3
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, wallsTexture);
+    gl.uniform1i(gl.getUniformLocation(program, "u_walls"), 3);
 }
 
 
 
-function runStep(gl, programs, readState, writeState, canvas) {
+function runStep(gl, programs, readState, writeState, canvas, wallsTexture) {
     // LBM Step
     gl.useProgram(programs.step);
     gl.bindFramebuffer(gl.FRAMEBUFFER, writeState.fbo);
     gl.viewport(0, 0, canvas.width, canvas.height);
     
-    bindLBMTextures(gl, programs.step, readState);
+    bindLBMTextures(gl, programs.step, readState, wallsTexture);
     
     // params
     const resLoc = gl.getUniformLocation(programs.step, "u_res");
@@ -63,12 +69,12 @@ function runStep(gl, programs, readState, writeState, canvas) {
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 }
 
-function drawDisplay(gl, programs, stateToDisplay, canvas) {
+function drawDisplay(gl, programs, stateToDisplay, canvas, wallsTexture) {
     gl.useProgram(programs.display);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     
-    bindLBMTextures(gl, programs.display, stateToDisplay);
+    bindLBMTextures(gl, programs.display, stateToDisplay, wallsTexture);
     
     const resLocDisp = gl.getUniformLocation(programs.display, "u_res");
     if (resLocDisp !== null) gl.uniform2f(resLocDisp, canvas.width, canvas.height);
@@ -112,11 +118,13 @@ async function main() {
     const programs = await shadersCompiler(gl, shaderConfig);
     console.log("Programs ready:", programs);
 
-
-
+    // Create shared walls texture (used by both ping and pong)
+    const wallsTexture = createWallsTexture(canvas, gl);
+    const wallInitFBO = createWallInitFBO(gl, wallsTexture);
 
     // Single bind cuz everyone uses it
-    for (let p in programs) {
+    const programsToSetup = ['init', 'step', 'display', 'wallInit'];
+    for (let p of programsToSetup) {
         gl.useProgram(programs[p]);
         const posLoc = gl.getAttribLocation(programs[p], "a_position");
         gl.enableVertexAttribArray(posLoc);
@@ -151,7 +159,17 @@ async function main() {
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
 
+    function initializeWalls() {
+        gl.useProgram(programs.wallInit);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, wallInitFBO);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        const resLoc = gl.getUniformLocation(programs.wallInit, "u_res");
+        gl.uniform2f(resLoc, canvas.width, canvas.height);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
     function resetSimulation() {
+        initializeWalls();
         initializeState(ping);
         initializeState(pong);
 
@@ -161,7 +179,7 @@ async function main() {
         simControl.stepRequests = 0;
         lastTimeMs = 0;
 
-        drawDisplay(gl, programs, readState, canvas);
+        drawDisplay(gl, programs, readState, canvas, wallsTexture);
     }
 
     function updateUiStatus() {
@@ -199,7 +217,7 @@ async function main() {
 
     updateUiStatus();
 
-    // --- 3. INITIALIZE THE FLUID ---
+    // Init is equivalent to reset
     resetSimulation();
 
     function frame(timeMs) {
@@ -221,7 +239,7 @@ async function main() {
                 stepBudget -= 1.0;
             }
 
-            runStep(gl, programs, readState, writeState, canvas);
+            runStep(gl, programs, readState, writeState, canvas, wallsTexture);
 
             const temp = readState;
             readState = writeState;
@@ -233,7 +251,7 @@ async function main() {
             stepBudget = maxStepsPerFrame;
         }
 
-        drawDisplay(gl, programs, readState, canvas);
+        drawDisplay(gl, programs, readState, canvas, wallsTexture);
         requestAnimationFrame(frame);
     }
 

@@ -1,6 +1,20 @@
 #version 300 es
 
 
+/*
+
+Should probably paramterize color scheme
+
+gist_ncar is pretty neat tho
+
+
+
+*/
+
+
+
+
+
 // Hello world shader
 // precision highp float;
 // out vec4 outColor;
@@ -16,6 +30,7 @@ precision highp float;
 uniform sampler2D u_Q1Q4;
 uniform sampler2D u_Q5Q8;
 uniform sampler2D u_Q9;
+uniform sampler2D u_walls;
 uniform vec2 u_res;
 
 in vec2 v_uv;
@@ -55,6 +70,14 @@ vec3 density_heatmap(float rho) {
 }
 
 void main() {
+    // Check for walls first
+    vec4 wallData = texture(u_walls, v_uv);
+    if (wallData.r > 0.5) {
+        // Display walls in black
+        outColor = vec4(1.0f, 1.0f, 0.0f, 1.0f);
+        return;
+    }
+    
     float f0 = texture(u_Q9, v_uv).r;
     vec4 f14 = texture(u_Q1Q4, v_uv);
     vec4 f58 = texture(u_Q5Q8, v_uv);
@@ -77,7 +100,7 @@ void main() {
     }
 
     // 3. Normal Visualization
-    float dilation = 80.0;
+    // float dilation = 80.0;
     // vec3 speedCol = heatmap(speed * 5.0); 
     // vec3 speedCol = heatmap(speed * dilation / (1.0 + speed * dilation)); 
 

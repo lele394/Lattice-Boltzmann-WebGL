@@ -44,3 +44,30 @@ export async function setupBuffers(canvas, gl) {
 
     return { Q1Q4, Q5Q8, Q9 };
 }
+
+export function createWallsTexture(canvas, gl) {
+    const width = canvas.width;
+    const height = canvas.height;
+
+    const wallTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, wallTexture);
+
+    gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA32F,
+        width,
+        height,
+        0,
+        gl.RGBA,
+        gl.FLOAT, 
+        null
+    );
+
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+
+    return wallTexture;
+}

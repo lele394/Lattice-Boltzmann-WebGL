@@ -55,11 +55,14 @@ export async function shadersCompiler(gl, shaderConfig) {
     const initSource = await fetch(shaderConfig.init).then(res => res.text());
     const stepSource = await fetch(shaderConfig.step).then(res => res.text());
     const displaySource = await fetch(shaderConfig.display).then(res => res.text());
+    const wallInitSource = await fetch(shaderConfig.wallInit).then(res => res.text());
 
-    // 5. Build the programs
-    return {
+    const programs = {
         init:    createProgram(vsSource, initSource),
         step:    createProgram(vsSource, stepSource),
-        display: createProgram(vsSource, displaySource)
+        display: createProgram(vsSource, displaySource),
+        wallInit: createProgram(vsSource, wallInitSource)
     };
+
+    return programs;
 }
