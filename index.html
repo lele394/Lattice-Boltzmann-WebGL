@@ -30,24 +30,147 @@
         top: 12px;
         right: 12px;
         z-index: 20;
-        background: rgba(20, 20, 24, 0.85);
+        background: rgba(20, 20, 24, 0.92);
         color: #f2f2f2;
         border: 1px solid rgba(255, 255, 255, 0.2);
         border-radius: 10px;
-        padding: 10px;
-        min-width: 210px;
-        backdrop-filter: blur(4px);
+        padding: 0;
+        max-width: 580px;
+        max-height: calc(100vh - 30px);
+        backdrop-filter: blur(8px);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        transition: all 0.3s ease;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    #sim-controls.collapsed {
+        min-width: 0;
+        width: auto;
+        padding: 0;
+    }
+
+    #sim-controls.collapsed #controls-content {
+        display: none;
+    }
+
+    #controls-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 14px;
+        background: rgba(30, 30, 36, 0.6);
+        border-radius: 10px 10px 0 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+        cursor: pointer;
+        user-select: none;
+    }
+
+    #controls-header:hover {
+        background: rgba(35, 35, 42, 0.7);
+    }
+
+    #controls-title {
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        color: #e0e0e0;
+    }
+
+    #collapse-btn {
+        background: transparent;
+        border: none;
+        color: #b0b0b0;
+        font-size: 18px;
+        cursor: pointer;
+        padding: 0;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.3s ease, color 0.2s ease;
+    }
+
+    #collapse-btn:hover {
+        color: #ffffff;
+    }
+
+    #sim-controls.collapsed #collapse-btn {
+        transform: rotate(180deg);
+    }
+
+    #controls-content {
+        padding: 14px;
+        overflow-y: auto;
+        overflow-x: hidden;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 14px;
+        max-height: calc(100vh - 100px);
+    }
+
+    #controls-content::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    #controls-content::-webkit-scrollbar-track {
+        background: rgba(10, 10, 15, 0.4);
+        border-radius: 4px;
+    }
+
+    #controls-content::-webkit-scrollbar-thumb {
+        background: rgba(100, 100, 120, 0.5);
+        border-radius: 4px;
+    }
+
+    #controls-content::-webkit-scrollbar-thumb:hover {
+        background: rgba(120, 120, 140, 0.7);
+    }
+
+    .control-section {
+        margin-bottom: 0;
+        padding: 12px;
+        background: rgba(30, 30, 36, 0.3);
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .control-section.full-width {
+        grid-column: 1 / -1;
+    }
+
+    .section-title {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: #888;
+        margin-bottom: 10px;
+        padding-bottom: 4px;
     }
 
     #sim-controls .row {
         display: flex;
         align-items: center;
-        gap: 8px;
-        margin-bottom: 8px;
+        gap: 10px;
+        margin-bottom: 10px;
     }
 
     #sim-controls .row:last-child {
         margin-bottom: 0;
+    }
+
+    .button-group {
+        display: flex;
+        gap: 6px;
+        width: 100%;
+    }
+
+    .button-group button {
+        flex: 1;
     }
 
     #sim-controls button,
@@ -56,16 +179,25 @@
     }
 
     #sim-controls button {
-        background: #2f3240;
+        background: linear-gradient(135deg, #2f3240 0%, #262933 100%);
         color: #f2f2f2;
         border: 1px solid #4a4f62;
         border-radius: 6px;
-        padding: 6px 10px;
+        padding: 8px 12px;
         cursor: pointer;
+        font-weight: 500;
+        transition: all 0.2s ease;
     }
 
     #sim-controls button:hover {
-        background: #3a3e50;
+        background: linear-gradient(135deg, #3a3e50 0%, #30343f 100%);
+        border-color: #5a5f72;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    #sim-controls button:active {
+        transform: translateY(0);
     }
 
     #play-pause-btn.playing {
@@ -87,22 +219,39 @@
     }
 
     #sim-controls input[type="number"] {
-        width: 84px;
+        flex: 1;
+        min-width: 0;
         background: #181a22;
         color: #f2f2f2;
         border: 1px solid #4a4f62;
         border-radius: 6px;
-        padding: 4px 6px;
+        padding: 6px 8px;
+        transition: border-color 0.2s ease;
+    }
+
+    #sim-controls input[type="number"]:focus {
+        outline: none;
+        border-color: #6a8fd8;
+        background: #1a1c26;
     }
 
     #sim-controls select {
-        width: 120px;
+        flex: 1;
+        min-width: 0;
         background: #181a22;
         color: #f2f2f2;
         border: 1px solid #4a4f62;
         border-radius: 6px;
-        padding: 4px 6px;
+        padding: 6px 8px;
         font-size: 13px;
+        cursor: pointer;
+        transition: border-color 0.2s ease;
+    }
+
+    #sim-controls select:focus {
+        outline: none;
+        border-color: #6a8fd8;
+        background: #1a1c26;
     }
 
     #sim-controls input[type="checkbox"] {
@@ -115,10 +264,55 @@
     #sim-controls label {
         font-size: 13px;
         white-space: nowrap;
+        color: #d0d0d0;
+        font-weight: 500;
+        min-width: fit-content;
     }
 
     #sim-controls .slider-block {
         margin-bottom: 8px;
+    }
+
+    #sim-controls .slider-block input[type="range"] {
+        width: 100%;
+        height: 6px;
+        border-radius: 3px;
+        background: linear-gradient(to right, #10141d 0%, #2b3242 100%);
+        outline: none;
+        -webkit-appearance: none;
+        appearance: none;
+    }
+
+    #sim-controls .slider-block input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #4a90e2;
+        cursor: pointer;
+        border: 2px solid #2a5a8a;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+
+    #sim-controls .slider-block input[type="range"]::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #4a90e2;
+        cursor: pointer;
+        border: 2px solid #2a5a8a;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+
+    #sim-controls .slider-block input[type="range"]::-webkit-slider-thumb:hover {
+        background: #5aa0f2;
+        border-color: #3a6a9a;
+    }
+
+    #sim-controls .slider-block input[type="range"]::-moz-range-thumb:hover {
+        background: #5aa0f2;
+        border-color: #3a6a9a;
     }
 
     #sim-controls .slider-header {
@@ -215,8 +409,33 @@
     }
 
     #sim-status {
-        font-size: 12px;
-        opacity: 0.85;
+        font-size: 11px;
+        color: #888;
+        text-align: center;
+        padding: 10px;
+        background: rgba(30, 30, 36, 0.3);
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        grid-column: 1 / -1;
+    }
+
+    #sim-status.running {
+        color: #5fb85f;
+    }
+
+    #sim-status.paused {
+        color: #d88a5f;
+    }
+
+    /* Responsive: single column for smaller viewports */
+    @media (max-height: 800px) {
+        #controls-content {
+            grid-template-columns: 1fr;
+        }
+
+        #sim-controls {
+            max-width: 280px;
+        }
     }
 
 </style>
@@ -225,85 +444,122 @@
 <body>
     
 
-    <canvas id="lbm-canvas" width="600" height="600"></canvas>
+    <canvas id="lbm-canvas" width="800" height="300"></canvas>
 
     <div id="sim-controls">
-        <div class="row">
-            <button id="play-pause-btn" type="button">Pause</button>
-            <button id="step-btn" type="button">Step</button>
-            <button id="reset-btn" type="button">Reset</button>
+        <div id="controls-header">
+            <div id="controls-title">Simulation Controls</div>
+            <button id="collapse-btn" type="button" title="Collapse/Expand">▼</button>
         </div>
-        <div class="row">
-            <label for="step-rate-input">Steps/s</label>
-            <input id="step-rate-input" type="number" min="1" max="2000" step="1" value="60">
-        </div>
-        <div class="row">
-            <label for="canvas-width-input">Width</label>
-            <input id="canvas-width-input" type="number" min="100" max="2000" step="50" value="600">
-        </div>
-        <div class="row">
-            <label for="canvas-height-input">Height</label>
-            <input id="canvas-height-input" type="number" min="100" max="2000" step="50" value="600">
-        </div>
-        <div class="row">
-            <label for="init-type-select">Init</label>
-            <select id="init-type-select"></select>
-        </div>
-        <div id="init-params-container"></div>
-        <div class="row">
-            <input id="viz-velocity-toggle" type="checkbox">
-            <label for="viz-velocity-toggle">Velocity View</label>
-        </div>
-
-        <div class="slider-block">
-            <div class="slider-header">
-                <label>Density Range</label>
-                <span id="density-range-value" class="slider-value"></span>
+        
+        <div id="controls-content">
+            <!-- Simulation Controls Section -->
+            <div class="control-section full-width">
+                <div class="section-title">Simulation</div>
+                <div class="button-group">
+                    <button id="play-pause-btn" type="button">Pause</button>
+                    <button id="step-btn" type="button">Step</button>
+                    <button id="reset-btn" type="button">Reset</button>
+                </div>
+                <div class="button-group" style="margin-top: 8px;">
+                    <button id="reset-settings-btn" type="button" style="background: linear-gradient(135deg, #3d2f40 0%, #2d2333 100%); border-color: #62495a;">Reset Settings</button>
+                </div>
+                <div class="slider-block" style="margin-top: 12px;">
+                    <div class="slider-header">
+                        <label for="step-rate-slider">Steps/s</label>
+                        <input id="step-rate-input" type="number" min="0" max="1000" step="1" value="600" style="width: 70px; text-align: center;">
+                    </div>
+                    <input id="step-rate-slider" type="range" min="0" max="1000" step="1" value="600" style="width: 100%;">
+                </div>
             </div>
-            <div class="dual-slider">
-                <div class="dual-slider-track"><div id="density-range-fill" class="dual-slider-fill"></div></div>
-                <input id="density-min-slider" type="range" min="0" max="3" step="0.001" value="1.0">
-                <input id="density-max-slider" type="range" min="0" max="3" step="0.001" value="1.6">
+
+            <!-- Canvas Settings Section -->
+            <div class="control-section">
+                <div class="section-title">Canvas Settings</div>
+                <div class="row">
+                    <label for="canvas-width-input">Width</label>
+                    <input id="canvas-width-input" type="number" min="100" max="2000" step="50" value="800">
+                </div>
+                <div class="row">
+                    <label for="canvas-height-input">Height</label>
+                    <input id="canvas-height-input" type="number" min="100" max="2000" step="50" value="300">
+                </div>
             </div>
-        </div>
 
-        <div class="slider-block">
-            <div class="slider-header">
-                <label>Velocity Range</label>
-                <span id="velocity-range-value" class="slider-value"></span>
+            <!-- Initialization Section -->
+            <div class="control-section">
+                <div class="section-title">Initialization</div>
+                <div class="row">
+                    <label for="init-type-select">Type</label>
+                    <select id="init-type-select"></select>
+                </div>
+                <div id="init-params-container"></div>
             </div>
-            <div class="dual-slider">
-                <div class="dual-slider-track"><div id="velocity-range-fill" class="dual-slider-fill"></div></div>
-                <input id="velocity-min-slider" type="range" min="0" max="3" step="0.001" value="0.0">
-                <input id="velocity-max-slider" type="range" min="0" max="3" step="0.001" value="0.2">
+
+            <!-- Visualization Section -->
+            <div class="control-section">
+                <div class="section-title">Visualization</div>
+                <div class="row">
+                    <input id="viz-velocity-toggle" type="checkbox">
+                    <label for="viz-velocity-toggle">Velocity View</label>
+                </div>
+
+                <div class="slider-block">
+                    <div class="slider-header">
+                        <label>Density Range</label>
+                        <span id="density-range-value" class="slider-value"></span>
+                    </div>
+                    <div class="dual-slider">
+                        <div class="dual-slider-track"><div id="density-range-fill" class="dual-slider-fill"></div></div>
+                        <input id="density-min-slider" type="range" min="0" max="3" step="0.001" value="1.0">
+                        <input id="density-max-slider" type="range" min="0" max="3" step="0.001" value="1.6">
+                    </div>
+                </div>
+
+                <div class="slider-block">
+                    <div class="slider-header">
+                        <label>Velocity Range</label>
+                        <span id="velocity-range-value" class="slider-value"></span>
+                    </div>
+                    <div class="dual-slider">
+                        <div class="dual-slider-track"><div id="velocity-range-fill" class="dual-slider-fill"></div></div>
+                        <input id="velocity-min-slider" type="range" min="0" max="3" step="0.001" value="0.0">
+                        <input id="velocity-max-slider" type="range" min="0" max="3" step="0.001" value="0.2">
+                    </div>
+                </div>
             </div>
+
+            <!-- Boundary & Objects Section -->
+            <div class="control-section">
+                <div class="section-title">Boundary & Objects</div>
+                <div class="row">
+                    <label for="boundary-mode-select">Mode</label>
+                    <select id="boundary-mode-select">
+                        <option value="wrap">Wrap Around</option>
+                        <option value="boundary" selected>Boundary Walls</option>
+                        <option value="open">Open System</option>
+                        <option value="airflowTunnel">Airflow Tunnel</option>
+                    </select>
+                </div>
+
+                <div id="boundary-mode-params-container"></div>
+
+                <div class="row">
+                    <label for="simple-object-select">Object</label>
+                    <select id="simple-object-select">
+                        <option value="none">None</option>
+                    </select>
+                </div>
+
+                <div id="simple-object-params-container"></div>
+
+                <div id="wall-objects-container">
+                    <!-- Wall object checkboxes will be generated here -->
+                </div>
+            </div>
+
+            <div id="sim-status" class="running">Running</div>
         </div>
-
-        <div class="row">
-            <label for="boundary-mode-select">Boundary Mode</label>
-            <select id="boundary-mode-select">
-                <option value="wrap">Wrap Around</option>
-                <option value="boundary" selected>Boundary Walls</option>
-                <option value="open">Open System</option>
-                <option value="airflowTunnel">Airflow Tunnel</option>
-            </select>
-        </div>
-
-        <div id="boundary-mode-params-container"></div>
-
-        <div class="row">
-            <label for="simple-object-select">Simple Object</label>
-            <select id="simple-object-select">
-                <option value="none">None</option>
-            </select>
-        </div>
-
-        <div id="simple-object-params-container"></div>
-
-        <div id="wall-objects-container">
-            <!-- Wall object checkboxes will be generated here -->
-        </div>
-        <div id="sim-status">Running</div>
     </div>
 
     <script src="scripts/main.js" type="module"></script>

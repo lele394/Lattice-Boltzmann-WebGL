@@ -117,10 +117,10 @@ const simpleObjects = [
         name: 'Triangle',
         shader: 'shaders/objects/triangle.frag',
         params: [
-            { key: 'centerX', label: 'X Position', uniform: 'u_centerX', value: 0.5, step: 0.01, min: 0.0, max: 1.0 },
+            { key: 'centerX', label: 'X Position', uniform: 'u_centerX', value: 0.85, step: 0.01, min: 0.0, max: 1.0 },
             { key: 'centerY', label: 'Y Position', uniform: 'u_centerY', value: 0.5, step: 0.01, min: 0.0, max: 1.0 },
-            { key: 'size', label: 'Size', uniform: 'u_size', value: 0.15, step: 0.01, min: 0.01, max: 0.5 },
-            { key: 'rotation', label: 'Rotation (deg)', uniform: 'u_rotation', value: 0, step: 1, min: 0, max: 360, isAngle: true }
+            { key: 'size', label: 'Size', uniform: 'u_size', value: 0.44, step: 0.01, min: 0.01, max: 0.5 },
+            { key: 'rotation', label: 'Rotation (deg)', uniform: 'u_rotation', value: 90, step: 1, min: 0, max: 360, isAngle: true }
         ]
     }
 ];
@@ -164,7 +164,7 @@ const initializationModes = [
 // Boundary mode parameters
 const boundaryModeParams = {
     airflowTunnel: [
-        { key: 'tunnelVelocity', label: 'Tunnel Velocity', uniform: 'u_tunnelVelocity', value: -0.1, step: 0.01, min: -0.5, max: 0.0 }
+        { key: 'tunnelVelocity', label: 'Tunnel Velocity', uniform: 'u_tunnelVelocity', value: -0.2, step: 0.01, min: -0.5, max: 0.0 }
     ],
     wrap: [],
     boundary: [],
@@ -387,7 +387,9 @@ async function main() {
     const playPauseBtn = document.getElementById('play-pause-btn');
     const stepBtn = document.getElementById('step-btn');
     const resetBtn = document.getElementById('reset-btn');
+    const resetSettingsBtn = document.getElementById('reset-settings-btn');
     const stepRateInput = document.getElementById('step-rate-input');
+    const stepRateSlider = document.getElementById('step-rate-slider');
     const initTypeSelect = document.getElementById('init-type-select');
     const initParamsContainer = document.getElementById('init-params-container');
     const vizVelocityToggle = document.getElementById('viz-velocity-toggle');
@@ -403,6 +405,9 @@ async function main() {
     const simStatus = document.getElementById('sim-status');
     const canvasWidthInput = document.getElementById('canvas-width-input');
     const canvasHeightInput = document.getElementById('canvas-height-input');
+    const collapseBtn = document.getElementById('collapse-btn');
+    const simControls = document.getElementById('sim-controls');
+    const controlsHeader = document.getElementById('controls-header');
 
     const canvasDimensions = {
         width: canvas.width,
@@ -412,11 +417,11 @@ async function main() {
     const simControl = {
         isPlaying: true,
         stepRequests: 0,
-        maxStepsPerSecond: 60
+        maxStepsPerSecond: 600
     };
 
     const boundaryMode = {
-        current: 'boundary' // 'wrap', 'boundary', 'open', or 'airflowTunnel'
+        current: 'airflowTunnel' // 'wrap', 'boundary', 'open', or 'airflowTunnel'
     };
 
     const boundaryModeParamsValues = {
@@ -434,7 +439,7 @@ async function main() {
     });
 
     const simpleObject = {
-        selected: 'none', // 'none' or object id
+        selected: 'triangle', // 'none' or object id
         values: {}
     };
 
@@ -455,7 +460,7 @@ async function main() {
     };
 
     const initialization = {
-        selectedModeId: 'inkDrop',
+        selectedModeId: 'uniform',
         values: {}
     };
 
@@ -921,7 +926,11 @@ async function main() {
             playPauseBtn.classList.remove('playing', 'paused');
             playPauseBtn.classList.add(simControl.isPlaying ? 'playing' : 'paused');
         }
-        if (simStatus) simStatus.textContent = simControl.isPlaying ? 'Running' : 'Paused';
+        if (simStatus) {
+            simStatus.textContent = simControl.isPlaying ? 'Running' : 'Paused';
+            simStatus.classList.remove('running', 'paused');
+            simStatus.classList.add(simControl.isPlaying ? 'running' : 'paused');
+        }
     }
 
     if (playPauseBtn) {
@@ -944,12 +953,69 @@ async function main() {
         });
     }
 
+    if (resetSettingsBtn) {
+        resetSettingsBtn.addEventListener('click', () => {
+            if (confirm('Reset all settings to defaults? This will reload the page.')) {
+                SettingsCache.clear();
+                location.reload();
+            }
+        });
+    }
+
+    // Collapse/Expand functionality
+    if (collapseBtn && controlsHeader && simControls) {
+        const toggleCollapse = () => {
+            simControls.classList.toggle('collapsed');
+            const isCollapsed = simControls.classList.contains('collapsed');
+            localStorage.setItem('lbm_controls_collapsed', isCollapsed ? 'true' : 'false');
+        };
+
+        collapseBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleCollapse();
+        });
+
+        controlsHeader.addEventListener('click', () => {
+            if (simControls.classList.contains('collapsed')) {
+                toggleCollapse();
+            }
+        });
+
+        // Restore collapsed state from localStorage
+        const wasCollapsed = localStorage.getItem('lbm_controls_collapsed') === 'true';
+        if (wasCollapsed) {
+            simControls.classList.add('collapsed');
+        }
+    }
+
     if (stepRateInput) {
-        stepRateInput.addEventListener('change', () => {
-            const parsed = Number(stepRateInput.value);
-            const sanitized = Number.isFinite(parsed) ? Math.max(1, Math.min(2000, Math.floor(parsed))) : 60;
+        const updateStepRate = (value) => {
+            const parsed = Number(value);
+            const sanitized = Number.isFinite(parsed) ? Math.max(0, Math.min(1000, Math.floor(parsed))) : 60;
             simControl.maxStepsPerSecond = sanitized;
             stepRateInput.value = String(sanitized);
+            if (stepRateSlider) stepRateSlider.value = String(sanitized);
+            SettingsCache.save(settings);
+        };
+
+        stepRateInput.addEventListener('change', () => {
+            updateStepRate(stepRateInput.value);
+        });
+
+        stepRateInput.addEventListener('input', () => {
+            const parsed = Number(stepRateInput.value);
+            if (Number.isFinite(parsed)) {
+                const sanitized = Math.max(0, Math.min(1000, parsed));
+                if (stepRateSlider) stepRateSlider.value = String(sanitized);
+            }
+        });
+    }
+
+    if (stepRateSlider) {
+        stepRateSlider.addEventListener('input', () => {
+            const value = Number(stepRateSlider.value);
+            simControl.maxStepsPerSecond = value;
+            if (stepRateInput) stepRateInput.value = String(value);
             SettingsCache.save(settings);
         });
     }
@@ -959,9 +1025,12 @@ async function main() {
 
     // Sync UI with cached settings
     function syncUiWithSettings() {
-        // Sync step rate input
+        // Sync step rate input and slider
         if (stepRateInput) {
             stepRateInput.value = String(simControl.maxStepsPerSecond);
+        }
+        if (stepRateSlider) {
+            stepRateSlider.value = String(simControl.maxStepsPerSecond);
         }
 
         // Sync boundary mode
