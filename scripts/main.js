@@ -166,7 +166,8 @@ const initializationModes = [
         params: [
             { key: 'inkDropX', label: 'Ink X', uniform: 'u_centerX', value: 0.85, step: 0.01, min: 0.0, max: 1.0 },
             { key: 'inkDropY', label: 'Ink Y', uniform: 'u_centerY', value: 0.65, step: 0.01, min: 0.0, max: 1.0 },
-            { key: 'inkDropTopDensity', label: 'Top Density', uniform: 'u_topDensity', value: 1.6, step: 0.01, min: 1.0, max: 5.0 }
+            { key: 'inkDropTopDensity', label: 'Top Density', uniform: 'u_topDensity', value: 1.6, step: 0.01, min: 1.0, max: 5.0 },
+            { key: 'tau', label: 'Tau', uniform: 'u_tau', value: 0.6, step: 0.01, min: 0.51, max: 2.0 }
         ]
     },
     {
@@ -174,7 +175,8 @@ const initializationModes = [
         name: 'Uniform',
         programKey: 'initUniform',
         params: [
-            { key: 'uniformDensity', label: 'Density', uniform: 'u_uniformDensity', value: 1.0, step: 0.01, min: 0.1, max: 5.0 }
+            { key: 'uniformDensity', label: 'Density', uniform: 'u_uniformDensity', value: 1.0, step: 0.01, min: 0.1, max: 5.0 },
+            { key: 'tau', label: 'Tau', uniform: 'u_tau', value: 0.6, step: 0.01, min: 0.51, max: 2.0 }
         ]
     }
 ];
@@ -248,7 +250,7 @@ function bindLBMTextures(gl, program, textures, wallsTexture, prevWallsTexture) 
 
 
 
-function runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture, boundaryMode, boundaryModeParamsValues) {
+function runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture, boundaryMode, boundaryModeParamsValues, initialization) {
     // LBM Step
     gl.useProgram(programs.step);
     gl.bindFramebuffer(gl.FRAMEBUFFER, writeState.fbo);
@@ -268,6 +270,11 @@ function runStep(gl, programs, readState, writeState, canvas, wallsTexture, prev
     else if (boundaryMode.current === 'airflowTunnel') boundaryModeValue = 3.0;
     const boundaryModeLoc = gl.getUniformLocation(programs.step, "u_boundaryMode");
     if (boundaryModeLoc !== null) gl.uniform1f(boundaryModeLoc, boundaryModeValue);
+
+    const tauLoc = gl.getUniformLocation(programs.step, "u_tau");
+    if (tauLoc !== null) {
+        gl.uniform1f(tauLoc, initialization.values.tau ?? 0.6);
+    }
     
     // Pass tunnel velocity parameter
     const tunnelVelLoc = gl.getUniformLocation(programs.step, "u_tunnelVelocity");
@@ -1913,7 +1920,7 @@ async function main() {
                 initializeWalls(simulationIteration, true);
             }
 
-            runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture, boundaryMode, boundaryModeParamsValues);
+            runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture, boundaryMode, boundaryModeParamsValues, initialization);
 
             const temp = readState;
             readState = writeState;

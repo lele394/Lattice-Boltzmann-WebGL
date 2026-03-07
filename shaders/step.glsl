@@ -5,6 +5,7 @@ uniform sampler2D u_Q1Q4, u_Q5Q8, u_Q9, u_walls, u_prevWalls;
 uniform vec2 u_res;
 uniform float u_boundaryMode; // 0=wrap, 1=boundary, 2=open, 3=airflowTunnel
 uniform float u_tunnelVelocity;
+uniform float u_tau;
 in vec2 v_uv;
 
 layout(location = 0) out vec4 out_Q1Q4;
@@ -64,7 +65,7 @@ void main() {
     For the wall stuff, maybe can avoide redoing the whole matrix math after that.
     */
 
-    float tau = 0.6; // Relaxation time (must be > 0.5 for stability, higher = more viscous)
+    float tau = u_tau; // Relaxation time (must be > 0.5 for stability, higher = more viscous)
     vec2 px = 1.0 / u_res;
 
     // --- STREAMING (PULL) ---
