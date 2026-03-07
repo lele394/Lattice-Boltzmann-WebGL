@@ -37,3 +37,5 @@ WebGL cuz I wanna play with it online
 - [MRT Lattice Boltzmann Schemes for High Reynolds Number Flow in Two-Dimensional Lid-Driven Semi-Circular Cavity](https://www.researchgate.net/publication/270955554_MRT_Lattice_Boltzmann_Schemes_for_High_Reynolds_Number_Flow_in_Two-Dimensional_Lid-Driven_Semi-Circular_Cavity)
 
 - Gábor Závodszky's [medFlow2 Lattice-Boltzmann code](https://github.com/gzavo/medFlow2D/blob/master/src/lbm/lb.c)
+
+- for the tunnel and open system boundaries (Zou/He boundaries) : [Implementation of on-site velocity boundary conditions for D3Q19 lattice Boltzmann](https://arxiv.org/abs/0811.4593)
