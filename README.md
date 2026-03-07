@@ -3,7 +3,7 @@
 
 
 <p align="center">
-  <img src="./res/cow.gif" width="1200">
+  <img src="./res/cow.gif" width="50%">
 </p>
 
 
