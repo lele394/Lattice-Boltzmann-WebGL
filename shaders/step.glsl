@@ -52,6 +52,7 @@ void main() {
     // Reference: [(0,0), E, SE, S, SW, W, NW, N, NE]
     // Ours:      [(0,0), E, N, W, S, NE, NW, SW, SE]
     float fr[9]; // reordered
+    // I could just fucking load it that way yk. But I CBA changing it for now
     fr[0] = f0; fr[1] = f1; fr[2] = f8; fr[3] = f4; fr[4] = f7;
     fr[5] = f3; fr[6] = f6; fr[7] = f2; fr[8] = f5;
     
@@ -99,13 +100,18 @@ void main() {
     fnr[8] = (1.0/36.0) * (4.0*m0 + 2.0*m1 + m2 + 6.0*m3 + 3.0*m4 + 6.0*m5 + 3.0*m6 + 9.0*m8);
     
     // Reorder back to our population ordering. Really necessary?
-    float fn[9];
-    fn[0] = fnr[0]; fn[1] = fnr[1]; fn[2] = fnr[7]; fn[3] = fnr[5]; fn[4] = fnr[3];
-    fn[5] = fnr[8]; fn[6] = fnr[6]; fn[7] = fnr[4]; fn[8] = fnr[2];
+    // float fn[9];
+    // fn[0] = fnr[0]; fn[1] = fnr[1]; fn[2] = fnr[7]; fn[3] = fnr[5]; fn[4] = fnr[3];
+    // fn[5] = fnr[8]; fn[6] = fnr[6]; fn[7] = fnr[4]; fn[8] = fnr[2];
 
-    out_Q1Q4 = vec4(fn[1], fn[2], fn[3], fn[4]);
-    out_Q5Q8 = vec4(fn[5], fn[6], fn[7], fn[8]);
-    out_Q9 = fn[0];
+    // out_Q1Q4 = vec4(fn[1], fn[2], fn[3], fn[4]);
+    // out_Q5Q8 = vec4(fn[5], fn[6], fn[7], fn[8]);
+    // out_Q9 = fn[0];
+
+    // Skipping reordering and direct to output
+    out_Q1Q4 = vec4(fnr[1], fnr[7], fnr[5], fnr[3]);
+    out_Q5Q8 = vec4(fnr[8], fnr[6], fnr[4], fnr[2]);
+    out_Q9 = fnr[0];
 
 
     // BGK Collision step, We replacing it with MRT, but leaving it here for reference
