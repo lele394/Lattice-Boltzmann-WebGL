@@ -10,7 +10,8 @@ const wallObjects = [
         id: 'boundaryWalls',
         name: 'Boundary Walls',
         enabled: true,
-        type: 'builtin' // Built into walls.frag
+        type: 'builtin', // Built into walls.frag
+        hideFromUI: true // Controlled by boundary mode dropdown
     },
     {
         id: 'fourCircles',
@@ -119,7 +120,7 @@ function bindLBMTextures(gl, program, textures, wallsTexture, prevWallsTexture) 
 
 
 
-function runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture) {
+function runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture, boundaryMode) {
     // LBM Step
     gl.useProgram(programs.step);
     gl.bindFramebuffer(gl.FRAMEBUFFER, writeState.fbo);
@@ -130,6 +131,12 @@ function runStep(gl, programs, readState, writeState, canvas, wallsTexture, prev
     // params
     const resLoc = gl.getUniformLocation(programs.step, "u_res");
     if (resLoc !== null) gl.uniform2f(resLoc, canvas.width, canvas.height);
+    
+    // Pass boundary mode: 0 = wrap, 1 = boundary, 2 = open
+    const boundaryModeValue = boundaryMode.current === 'wrap' ? 0.0 : 
+                               boundaryMode.current === 'boundary' ? 1.0 : 2.0;
+    const boundaryModeLoc = gl.getUniformLocation(programs.step, "u_boundaryMode");
+    if (boundaryModeLoc !== null) gl.uniform1f(boundaryModeLoc, boundaryModeValue);
     
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 }
@@ -223,9 +230,9 @@ async function main() {
     const ping = { ...D2Q9_ping, fbo: fbo_ping };
     const pong = { ...D2Q9_pong, fbo: fbo_pong };
 
-    // Generate UI for wall objects
+    // Generate UI for wall objects (excluding those hidden from UI)
     const wallObjectsContainer = document.getElementById('wall-objects-container');
-    wallObjects.forEach(obj => {
+    wallObjects.filter(obj => !obj.hideFromUI).forEach(obj => {
         const row = document.createElement('div');
         row.className = 'row';
         
@@ -263,12 +270,17 @@ async function main() {
     const velocityMaxSlider = document.getElementById('velocity-max-slider');
     const velocityRangeFill = document.getElementById('velocity-range-fill');
     const velocityRangeValue = document.getElementById('velocity-range-value');
+    const boundaryModeSelect = document.getElementById('boundary-mode-select');
     const simStatus = document.getElementById('sim-status');
 
     const simControl = {
         isPlaying: true,
         stepRequests: 0,
         maxStepsPerSecond: 60
+    };
+
+    const boundaryMode = {
+        current: 'boundary' // 'wrap', 'boundary', or 'open'
     };
 
     const visualization = {
@@ -489,6 +501,35 @@ async function main() {
         gl.disable(gl.BLEND);
     }
 
+    function updateTextureWrapping(textures, wrapMode) {
+        // Update all LBM state textures
+        [textures.Q1Q4, textures.Q5Q8, textures.Q9].forEach(tex => {
+            gl.bindTexture(gl.TEXTURE_2D, tex);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrapMode);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrapMode);
+        });
+    }
+
+    function setBoundaryMode(mode) {
+        boundaryMode.current = mode;
+        
+        // Update texture wrapping based on mode
+        const wrapMode = (mode === 'wrap') ? gl.REPEAT : gl.CLAMP_TO_EDGE;
+        updateTextureWrapping(ping, wrapMode);
+        updateTextureWrapping(pong, wrapMode);
+        
+        // Update boundary wall object enabled state
+        const boundaryWallObj = wallObjects.find(obj => obj.id === 'boundaryWalls');
+        if (boundaryWallObj) {
+            boundaryWallObj.enabled = (mode === 'boundary');
+            const checkbox = document.getElementById(`obj-${boundaryWallObj.id}`);
+            if (checkbox) checkbox.checked = boundaryWallObj.enabled;
+        }
+        
+        // Reset simulation to apply changes
+        resetSimulation();
+    }
+
     function resetSimulation() {
         simulationIteration = 0;
         initializeWalls(simulationIteration, false);
@@ -556,6 +597,12 @@ async function main() {
         visualization.velocityMax = maxValue;
     });
 
+    if (boundaryModeSelect) {
+        boundaryModeSelect.addEventListener('change', () => {
+            setBoundaryMode(boundaryModeSelect.value);
+        });
+    }
+
     updateUiStatus();
 
     // Init is equivalent to reset
@@ -586,7 +633,7 @@ async function main() {
                 initializeWalls(simulationIteration, true);
             }
 
-            runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture);
+            runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture, boundaryMode);
 
             const temp = readState;
             readState = writeState;

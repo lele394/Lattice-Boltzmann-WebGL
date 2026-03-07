@@ -3,11 +3,20 @@ precision highp float;
 
 uniform sampler2D u_Q1Q4, u_Q5Q8, u_Q9, u_walls, u_prevWalls;
 uniform vec2 u_res;
+uniform float u_boundaryMode; // 0=wrap, 1=boundary, 2=open
 in vec2 v_uv;
 
 layout(location = 0) out vec4 out_Q1Q4;
 layout(location = 1) out vec4 out_Q5Q8;
 layout(location = 2) out float out_Q9;
+
+// For open boundaries: equilibrium with density=1, velocity=0
+float equilibriumPop(int dir) {
+    float rho0 = 1.0;
+    if (dir == 0) return (4.0/9.0) * rho0;
+    if (dir == 1 || dir == 2 || dir == 3 || dir == 4) return (1.0/9.0) * rho0;
+    return (1.0/36.0) * rho0; // diagonal directions
+}
 
 void main() {
 
@@ -29,15 +38,40 @@ void main() {
 
     // --- STREAMING (PULL) ---
     // Pull from the opposite direction
-    float f0 = texture(u_Q9,   v_uv).r;                         
-    float f1 = texture(u_Q1Q4, v_uv + vec2(-px.x,  0.0)).r;
-    float f2 = texture(u_Q1Q4, v_uv + vec2( 0.0, -px.y)).g;
-    float f3 = texture(u_Q1Q4, v_uv + vec2( px.x,  0.0)).b;
-    float f4 = texture(u_Q1Q4, v_uv + vec2( 0.0,  px.y)).a;
-    float f5 = texture(u_Q5Q8, v_uv + vec2(-px.x, -px.y)).r;
-    float f6 = texture(u_Q5Q8, v_uv + vec2( px.x, -px.y)).g;
-    float f7 = texture(u_Q5Q8, v_uv + vec2( px.x,  px.y)).b;
-    float f8 = texture(u_Q5Q8, v_uv + vec2(-px.x,  px.y)).a;
+    // REQORKED
+    // For open boundaries:
+    //   - Incoming: Cells pull from outside -> use equilibrium (rho=1, u=0)
+    //   - Outgoing: Populations streaming out aren't pulled by anyone -> destroyed
+    bool isOpenMode = u_boundaryMode > 1.5;
+    
+    vec2 uv0 = v_uv;
+    vec2 uv1 = v_uv + vec2(-px.x,  0.0);
+    vec2 uv2 = v_uv + vec2( 0.0, -px.y);
+    vec2 uv3 = v_uv + vec2( px.x,  0.0);
+    vec2 uv4 = v_uv + vec2( 0.0,  px.y);
+    vec2 uv5 = v_uv + vec2(-px.x, -px.y);
+    vec2 uv6 = v_uv + vec2( px.x, -px.y);
+    vec2 uv7 = v_uv + vec2( px.x,  px.y);
+    vec2 uv8 = v_uv + vec2(-px.x,  px.y);
+    
+    bool out1 = isOpenMode && (uv1.x < 0.0 || uv1.x > 1.0 || uv1.y < 0.0 || uv1.y > 1.0);
+    bool out2 = isOpenMode && (uv2.x < 0.0 || uv2.x > 1.0 || uv2.y < 0.0 || uv2.y > 1.0);
+    bool out3 = isOpenMode && (uv3.x < 0.0 || uv3.x > 1.0 || uv3.y < 0.0 || uv3.y > 1.0);
+    bool out4 = isOpenMode && (uv4.x < 0.0 || uv4.x > 1.0 || uv4.y < 0.0 || uv4.y > 1.0);
+    bool out5 = isOpenMode && (uv5.x < 0.0 || uv5.x > 1.0 || uv5.y < 0.0 || uv5.y > 1.0);
+    bool out6 = isOpenMode && (uv6.x < 0.0 || uv6.x > 1.0 || uv6.y < 0.0 || uv6.y > 1.0);
+    bool out7 = isOpenMode && (uv7.x < 0.0 || uv7.x > 1.0 || uv7.y < 0.0 || uv7.y > 1.0);
+    bool out8 = isOpenMode && (uv8.x < 0.0 || uv8.x > 1.0 || uv8.y < 0.0 || uv8.y > 1.0);
+    
+    float f0 = texture(u_Q9,   uv0).r;
+    float f1 = out1 ? equilibriumPop(1) : texture(u_Q1Q4, uv1).r;
+    float f2 = out2 ? equilibriumPop(2) : texture(u_Q1Q4, uv2).g;
+    float f3 = out3 ? equilibriumPop(3) : texture(u_Q1Q4, uv3).b;
+    float f4 = out4 ? equilibriumPop(4) : texture(u_Q1Q4, uv4).a;
+    float f5 = out5 ? equilibriumPop(5) : texture(u_Q5Q8, uv5).r;
+    float f6 = out6 ? equilibriumPop(6) : texture(u_Q5Q8, uv6).g;
+    float f7 = out7 ? equilibriumPop(7) : texture(u_Q5Q8, uv7).b;
+    float f8 = out8 ? equilibriumPop(8) : texture(u_Q5Q8, uv8).a;
 
     vec4 wallData = texture(u_walls, v_uv);
     vec4 prevWallData = texture(u_prevWalls, v_uv);

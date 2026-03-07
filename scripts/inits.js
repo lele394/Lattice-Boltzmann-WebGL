@@ -1,4 +1,4 @@
-export async function setupBuffers(canvas, gl) {
+export async function setupBuffers(canvas, gl, wrapMode = gl.CLAMP_TO_EDGE) {
 
     const width = canvas.width;
     const height = canvas.height;
@@ -29,8 +29,8 @@ export async function setupBuffers(canvas, gl) {
 
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrapMode); // Fort open boundaries, we want CLAMP_TO_EDGE
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrapMode);
 
         return tex;
     }
@@ -45,7 +45,7 @@ export async function setupBuffers(canvas, gl) {
     return { Q1Q4, Q5Q8, Q9 };
 }
 
-export function createWallsTexture(canvas, gl) {
+export function createWallsTexture(canvas, gl, wrapMode = gl.CLAMP_TO_EDGE) {
     const width = canvas.width;
     const height = canvas.height;
 
@@ -66,8 +66,8 @@ export function createWallsTexture(canvas, gl) {
 
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrapMode);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrapMode);
 
     return wallTexture;
 }
