@@ -38,7 +38,6 @@ void main() {
 
     // --- STREAMING (PULL) ---
     // Pull from the opposite direction
-    // REQORKED
     // For open boundaries:
     //   - Incoming: Cells pull from outside -> use equilibrium (rho=1, u=0)
     //   - Outgoing: Populations streaming out aren't pulled by anyone -> destroyed
@@ -54,14 +53,14 @@ void main() {
     vec2 uv7 = v_uv + vec2( px.x,  px.y);
     vec2 uv8 = v_uv + vec2(-px.x,  px.y);
     
-    bool out1 = isOpenMode && (uv1.x < 0.0 || uv1.x > 1.0 || uv1.y < 0.0 || uv1.y > 1.0);
-    bool out2 = isOpenMode && (uv2.x < 0.0 || uv2.x > 1.0 || uv2.y < 0.0 || uv2.y > 1.0);
-    bool out3 = isOpenMode && (uv3.x < 0.0 || uv3.x > 1.0 || uv3.y < 0.0 || uv3.y > 1.0);
-    bool out4 = isOpenMode && (uv4.x < 0.0 || uv4.x > 1.0 || uv4.y < 0.0 || uv4.y > 1.0);
-    bool out5 = isOpenMode && (uv5.x < 0.0 || uv5.x > 1.0 || uv5.y < 0.0 || uv5.y > 1.0);
-    bool out6 = isOpenMode && (uv6.x < 0.0 || uv6.x > 1.0 || uv6.y < 0.0 || uv6.y > 1.0);
-    bool out7 = isOpenMode && (uv7.x < 0.0 || uv7.x > 1.0 || uv7.y < 0.0 || uv7.y > 1.0);
-    bool out8 = isOpenMode && (uv8.x < 0.0 || uv8.x > 1.0 || uv8.y < 0.0 || uv8.y > 1.0);
+    bool out1 = isOpenMode && (uv1.x <= 0.0 || uv1.x >= 1.0 || uv1.y <= 0.0 || uv1.y >= 1.0);
+    bool out2 = isOpenMode && (uv2.x <= 0.0 || uv2.x >= 1.0 || uv2.y <= 0.0 || uv2.y >= 1.0);
+    bool out3 = isOpenMode && (uv3.x <= 0.0 || uv3.x >= 1.0 || uv3.y <= 0.0 || uv3.y >= 1.0);
+    bool out4 = isOpenMode && (uv4.x <= 0.0 || uv4.x >= 1.0 || uv4.y <= 0.0 || uv4.y >= 1.0);
+    bool out5 = isOpenMode && (uv5.x <= 0.0 || uv5.x >= 1.0 || uv5.y <= 0.0 || uv5.y >= 1.0);
+    bool out6 = isOpenMode && (uv6.x <= 0.0 || uv6.x >= 1.0 || uv6.y <= 0.0 || uv6.y >= 1.0);
+    bool out7 = isOpenMode && (uv7.x <= 0.0 || uv7.x >= 1.0 || uv7.y <= 0.0 || uv7.y >= 1.0);
+    bool out8 = isOpenMode && (uv8.x <= 0.0 || uv8.x >= 1.0 || uv8.y <= 0.0 || uv8.y >= 1.0);
     
     float f0 = texture(u_Q9,   uv0).r;
     float f1 = out1 ? equilibriumPop(1) : texture(u_Q1Q4, uv1).r;
@@ -226,9 +225,34 @@ void main() {
     // out_Q9 = fn[0];
 
     // Skipping reordering and direct to output
-    out_Q1Q4 = vec4(fnr[1], fnr[7], fnr[5], fnr[3]);
-    out_Q5Q8 = vec4(fnr[8], fnr[6], fnr[4], fnr[2]);
-    out_Q9 = fnr[0];
+    vec4 outQ1Q4 = vec4(fnr[1], fnr[7], fnr[5], fnr[3]);
+    vec4 outQ5Q8 = vec4(fnr[8], fnr[6], fnr[4], fnr[2]);
+    float outQ9 = fnr[0];
+
+    // Open boundary absorption layer (sponge): damp perturbations near domain edges
+    // This reduces wave reflections while keeping outside state at rho=1, u=0.
+    if (isOpenMode) {
+        float edgeDistPx = min(
+            min(v_uv.x, 1.0 - v_uv.x) * u_res.x,
+            min(v_uv.y, 1.0 - v_uv.y) * u_res.y
+        );
+
+        float spongeWidthPx = 24.0;
+        float edgeFactor = clamp((spongeWidthPx - edgeDistPx) / spongeWidthPx, 0.0, 1.0);
+        float absorb = edgeFactor * edgeFactor;
+
+        vec4 eqQ1Q4 = vec4(1.0/9.0, 1.0/9.0, 1.0/9.0, 1.0/9.0);
+        vec4 eqQ5Q8 = vec4(1.0/36.0, 1.0/36.0, 1.0/36.0, 1.0/36.0);
+        float eqQ9 = 4.0/9.0;
+
+        outQ1Q4 = mix(outQ1Q4, eqQ1Q4, absorb);
+        outQ5Q8 = mix(outQ5Q8, eqQ5Q8, absorb);
+        outQ9 = mix(outQ9, eqQ9, absorb);
+    }
+
+    out_Q1Q4 = outQ1Q4;
+    out_Q5Q8 = outQ5Q8;
+    out_Q9 = outQ9;
 
 
     // BGK Collision step, We replacing it with MRT, but leaving it here for reference
