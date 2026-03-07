@@ -60,6 +60,6 @@ void main() {
     densDiff = log(max(0.0001, densDiff + 1.0)) / log(1.5); 
     vec3 densCol = vec3(densDiff);
 
-    outColor = vec4(speedCol, 1.0);
-    // outColor = vec4(densCol, 1.0);
+    // outColor = vec4(speedCol, 1.0);
+    outColor = vec4(densCol, 1.0);
 }

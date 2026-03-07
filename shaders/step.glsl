@@ -22,7 +22,7 @@ void main() {
     This is room for improvement on the day I'll be at peace with those maths.
     */
 
-    float tau = 0.50001; // Relaxation time (should stay above 0 but is stable under????)
+    float tau = 0.7; // Relaxation time (must be > 0.5 for stability, higher = more viscous)
     vec2 px = 1.0 / u_res;
 
     // --- STREAMING (PULL) ---
