@@ -129,6 +129,7 @@ async function main() {
 
     const playPauseBtn = document.getElementById('play-pause-btn');
     const stepBtn = document.getElementById('step-btn');
+    const resetBtn = document.getElementById('reset-btn');
     const stepRateInput = document.getElementById('step-rate-input');
     const simStatus = document.getElementById('sim-status');
 
@@ -137,6 +138,31 @@ async function main() {
         stepRequests: 0,
         maxStepsPerSecond: 60
     };
+
+    let readState = ping;
+    let writeState = pong;
+    let lastTimeMs = 0;
+    let stepBudget = 0;
+
+    function initializeState(targetState) {
+        gl.useProgram(programs.init);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, targetState.fbo);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    function resetSimulation() {
+        initializeState(ping);
+        initializeState(pong);
+
+        readState = ping;
+        writeState = pong;
+        stepBudget = 0;
+        simControl.stepRequests = 0;
+        lastTimeMs = 0;
+
+        drawDisplay(gl, programs, readState, canvas);
+    }
 
     function updateUiStatus() {
         if (playPauseBtn) playPauseBtn.textContent = simControl.isPlaying ? 'Pause' : 'Play';
@@ -156,10 +182,16 @@ async function main() {
         });
     }
 
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            resetSimulation();
+        });
+    }
+
     if (stepRateInput) {
         stepRateInput.addEventListener('change', () => {
             const parsed = Number(stepRateInput.value);
-            const sanitized = Number.isFinite(parsed) ? Math.max(1, Math.min(2000, Math.floor(parsed))) : 120;
+            const sanitized = Number.isFinite(parsed) ? Math.max(1, Math.min(2000, Math.floor(parsed))) : 60;
             simControl.maxStepsPerSecond = sanitized;
             stepRateInput.value = String(sanitized);
         });
@@ -168,18 +200,7 @@ async function main() {
     updateUiStatus();
 
     // --- 3. INITIALIZE THE FLUID ---
-    // Run the init shader ONCE to fill 'ping' with starting values
-    gl.useProgram(programs.init);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, ping.fbo);
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    const densityBumpLoc = gl.getUniformLocation(programs.init, "densityBump");
-    if (densityBumpLoc !== null) gl.uniform1f(densityBumpLoc, 1.6);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
-
-    let readState = ping;
-    let writeState = pong;
-    let lastTimeMs = 0;
-    let stepBudget = 0;
+    resetSimulation();
 
     function frame(timeMs) {
         if (lastTimeMs === 0) lastTimeMs = timeMs;
