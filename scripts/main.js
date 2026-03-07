@@ -139,6 +139,7 @@ async function main() {
     const stepBtn = document.getElementById('step-btn');
     const resetBtn = document.getElementById('reset-btn');
     const stepRateInput = document.getElementById('step-rate-input');
+    const boundaryWallsCheckbox = document.getElementById('boundary-walls-checkbox');
     const simStatus = document.getElementById('sim-status');
 
     const simControl = {
@@ -163,8 +164,15 @@ async function main() {
         gl.useProgram(programs.wallInit);
         gl.bindFramebuffer(gl.FRAMEBUFFER, wallInitFBO);
         gl.viewport(0, 0, canvas.width, canvas.height);
+        
         const resLoc = gl.getUniformLocation(programs.wallInit, "u_res");
         gl.uniform2f(resLoc, canvas.width, canvas.height);
+        
+        // Pass boundary walls toggle state
+        const enableBoundaryWalls = boundaryWallsCheckbox ? (boundaryWallsCheckbox.checked ? 1.0 : 0.0) : 0.0;
+        const boundaryWallsLoc = gl.getUniformLocation(programs.wallInit, "u_enableBoundaryWalls");
+        gl.uniform1f(boundaryWallsLoc, enableBoundaryWalls);
+        
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
 
