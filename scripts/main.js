@@ -48,40 +48,32 @@ function bindLBMTextures(gl, program, textures) {
 
 
 
-
-function render(gl, programs, ping, pong, canvas, time=0) {
-
-    console.log(`--- Frame at ${time.toFixed(2)} ms ---`);
-
+function runStep(gl, programs, readState, writeState, canvas) {
     // LBM Step
     gl.useProgram(programs.step);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, pong.fbo); 
+    gl.bindFramebuffer(gl.FRAMEBUFFER, writeState.fbo);
     gl.viewport(0, 0, canvas.width, canvas.height);
     
-    bindLBMTextures(gl, programs.step, ping); 
+    bindLBMTextures(gl, programs.step, readState);
     
     // params
     const resLoc = gl.getUniformLocation(programs.step, "u_res");
-    if(resLoc) gl.uniform2f(resLoc, canvas.width, canvas.height);
+    if (resLoc !== null) gl.uniform2f(resLoc, canvas.width, canvas.height);
     
     gl.drawArrays(gl.TRIANGLES, 0, 6);
+}
 
-    // draw
+function drawDisplay(gl, programs, stateToDisplay, canvas) {
     gl.useProgram(programs.display);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null); 
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     
-    bindLBMTextures(gl, programs.display, pong);
+    bindLBMTextures(gl, programs.display, stateToDisplay);
     
     const resLocDisp = gl.getUniformLocation(programs.display, "u_res");
-    if(resLocDisp) gl.uniform2f(resLocDisp, canvas.width, canvas.height);
+    if (resLocDisp !== null) gl.uniform2f(resLocDisp, canvas.width, canvas.height);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
-
-    // ! Bro why? 
-    // ^ rAF API has strict signature, needs to wrap it. Ughhhhh
-    requestAnimationFrame((time) => render(gl, programs, pong, ping, canvas, time));
-    // By the way I'm a genius, swap ping and pong in the rAF call so we don't need to do it manually before.
 }
 
 
@@ -135,15 +127,96 @@ async function main() {
     const ping = { ...D2Q9_ping, fbo: fbo_ping };
     const pong = { ...D2Q9_pong, fbo: fbo_pong };
 
+    const playPauseBtn = document.getElementById('play-pause-btn');
+    const stepBtn = document.getElementById('step-btn');
+    const stepRateInput = document.getElementById('step-rate-input');
+    const simStatus = document.getElementById('sim-status');
+
+    const simControl = {
+        isPlaying: true,
+        stepRequests: 0,
+        maxStepsPerSecond: 60
+    };
+
+    function updateUiStatus() {
+        if (playPauseBtn) playPauseBtn.textContent = simControl.isPlaying ? 'Pause' : 'Play';
+        if (simStatus) simStatus.textContent = simControl.isPlaying ? 'Running' : 'Paused';
+    }
+
+    if (playPauseBtn) {
+        playPauseBtn.addEventListener('click', () => {
+            simControl.isPlaying = !simControl.isPlaying;
+            updateUiStatus();
+        });
+    }
+
+    if (stepBtn) {
+        stepBtn.addEventListener('click', () => {
+            simControl.stepRequests += 1;
+        });
+    }
+
+    if (stepRateInput) {
+        stepRateInput.addEventListener('change', () => {
+            const parsed = Number(stepRateInput.value);
+            const sanitized = Number.isFinite(parsed) ? Math.max(1, Math.min(2000, Math.floor(parsed))) : 120;
+            simControl.maxStepsPerSecond = sanitized;
+            stepRateInput.value = String(sanitized);
+        });
+    }
+
+    updateUiStatus();
+
     // --- 3. INITIALIZE THE FLUID ---
     // Run the init shader ONCE to fill 'ping' with starting values
     gl.useProgram(programs.init);
     gl.bindFramebuffer(gl.FRAMEBUFFER, ping.fbo);
     gl.viewport(0, 0, canvas.width, canvas.height);
+    const densityBumpLoc = gl.getUniformLocation(programs.init, "densityBump");
+    if (densityBumpLoc !== null) gl.uniform1f(densityBumpLoc, 1.6);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-    // 4. START LOOP
-    render(gl, programs, ping, pong, canvas);
+    let readState = ping;
+    let writeState = pong;
+    let lastTimeMs = 0;
+    let stepBudget = 0;
+
+    function frame(timeMs) {
+        if (lastTimeMs === 0) lastTimeMs = timeMs;
+        const dt = (timeMs - lastTimeMs) / 1000.0;
+        lastTimeMs = timeMs;
+
+        if (simControl.isPlaying) {
+            stepBudget += dt * simControl.maxStepsPerSecond;
+        }
+
+        const maxStepsPerFrame = 20;
+        let stepsThisFrame = 0;
+
+        while ((stepBudget >= 1.0 || simControl.stepRequests > 0) && stepsThisFrame < maxStepsPerFrame) {
+            if (simControl.stepRequests > 0) {
+                simControl.stepRequests -= 1;
+            } else {
+                stepBudget -= 1.0;
+            }
+
+            runStep(gl, programs, readState, writeState, canvas);
+
+            const temp = readState;
+            readState = writeState;
+            writeState = temp;
+            stepsThisFrame += 1;
+        }
+
+        if (stepBudget > maxStepsPerFrame) {
+            stepBudget = maxStepsPerFrame;
+        }
+
+        drawDisplay(gl, programs, readState, canvas);
+        requestAnimationFrame(frame);
+    }
+
+    requestAnimationFrame(frame);
 }
 
 
