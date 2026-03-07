@@ -2,10 +2,21 @@ export async function setupBuffers(canvas, gl, wrapMode = gl.CLAMP_TO_EDGE) {
 
     const width = canvas.width;
     const height = canvas.height;
+    
+    console.log('setupBuffers called with canvas dimensions:', width, 'x', height);
+    
+    if (width <= 0 || height <= 0) {
+        throw new Error(`Invalid canvas dimensions: ${width}x${height}`);
+    }
 
-    // FLoat support check
+    // Float support check
     if (!gl.getExtension('EXT_color_buffer_float')) {
         throw new Error("Float render targets not supported");
+    }
+    
+    // Explicitly enable float blending for portability
+    if (!gl.getExtension('EXT_float_blend')) {
+        console.warn("EXT_float_blend not supported - blending may not work as expected");
     }
 
     // unpack alignment flags
@@ -41,6 +52,9 @@ export async function setupBuffers(canvas, gl, wrapMode = gl.CLAMP_TO_EDGE) {
     const Q1Q4 = createTexture(gl.RGBA32F, gl.RGBA);
     const Q5Q8 = createTexture(gl.RGBA32F, gl.RGBA);
     const Q9   = createTexture(gl.R32F,   gl.RED);
+    
+    // Unbind texture to clean state
+    gl.bindTexture(gl.TEXTURE_2D, null);
 
     return { Q1Q4, Q5Q8, Q9 };
 }

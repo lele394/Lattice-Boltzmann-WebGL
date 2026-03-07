@@ -12,13 +12,18 @@
         padding: 0;
         overflow: hidden;
         font-family: Arial, Helvetica, sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        background: #0a0a0c;
     }
 
-    /* #canvas {
+    #lbm-canvas {
         display: block;
-        width: 100vw;
-        height: 100vh;
-    } */
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
 
     #sim-controls {
         position: fixed;
@@ -231,6 +236,14 @@
         <div class="row">
             <label for="step-rate-input">Steps/s</label>
             <input id="step-rate-input" type="number" min="1" max="2000" step="1" value="60">
+        </div>
+        <div class="row">
+            <label for="canvas-width-input">Width</label>
+            <input id="canvas-width-input" type="number" min="100" max="2000" step="50" value="600">
+        </div>
+        <div class="row">
+            <label for="canvas-height-input">Height</label>
+            <input id="canvas-height-input" type="number" min="100" max="2000" step="50" value="600">
         </div>
         <div class="row">
             <label for="init-type-select">Init</label>

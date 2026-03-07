@@ -17,6 +17,7 @@ const SettingsCache = {
                 boundaryMode: settings.boundaryMode.current,
                 boundaryModeParamsValues: settings.boundaryModeParamsValues,
                 simpleObject: settings.simpleObject,
+                canvasDimensions: settings.canvasDimensions,
                 visualization: {
                     showVelocity: settings.visualization.showVelocity,
                     densityMin: settings.visualization.densityMin,
@@ -300,7 +301,15 @@ async function main() {
     console.log("Canvas and WebGL context grabbed:", canvas, gl);
     console.log("Max supported bound texture units:", gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS));
 
-    // LBM buffers Setup
+    // Load cached dimensions BEFORE creating buffers
+    const cachedSettings = SettingsCache.load();
+    if (cachedSettings && cachedSettings.canvasDimensions) {
+        canvas.width = cachedSettings.canvasDimensions.width;
+        canvas.height = cachedSettings.canvasDimensions.height;
+        console.log("Canvas dimensions loaded from cache:", canvas.width, canvas.height);
+    }
+
+    // LBM buffers Setup (now with correct dimensions)
     const D2Q9_ping = await setupBuffers(canvas, gl);
     const D2Q9_pong = await setupBuffers(canvas, gl);
     console.log("D2Q9 setup:", D2Q9_ping, D2Q9_pong);
@@ -319,10 +328,10 @@ async function main() {
     console.log("Programs ready:", programs);
 
     // Create shared walls texture (used by both ping and pong)
-    const wallsTexture = createWallsTexture(canvas, gl);
-    const prevWallsTexture = createWallsTexture(canvas, gl);
-    const wallInitFBO = createWallInitFBO(gl, wallsTexture);
-    const prevWallFBO = createWallInitFBO(gl, prevWallsTexture);
+    let wallsTexture = createWallsTexture(canvas, gl);
+    let prevWallsTexture = createWallsTexture(canvas, gl);
+    let wallInitFBO = createWallInitFBO(gl, wallsTexture);
+    let prevWallFBO = createWallInitFBO(gl, prevWallsTexture);
 
     // Single bind cuz everyone uses it
     const programsToSetup = ['init', 'initUniform', 'step', 'display', 'wallInit', 'wallsCopy'];
@@ -392,6 +401,13 @@ async function main() {
     const velocityRangeValue = document.getElementById('velocity-range-value');
     const boundaryModeSelect = document.getElementById('boundary-mode-select');
     const simStatus = document.getElementById('sim-status');
+    const canvasWidthInput = document.getElementById('canvas-width-input');
+    const canvasHeightInput = document.getElementById('canvas-height-input');
+
+    const canvasDimensions = {
+        width: canvas.width,
+        height: canvas.height
+    };
 
     const simControl = {
         isPlaying: true,
@@ -455,13 +471,13 @@ async function main() {
         boundaryMode,
         boundaryModeParamsValues,
         simpleObject,
+        canvasDimensions,
         visualization,
         initialization,
         wallObjects
     };
 
-    // Load settings from cache
-    const cachedSettings = SettingsCache.load();
+    // Load remaining settings from cache (dimensions already loaded earlier)
     if (cachedSettings) {
         if (cachedSettings.simControl) {
             simControl.isPlaying = cachedSettings.simControl.isPlaying;
@@ -476,6 +492,11 @@ async function main() {
         if (cachedSettings.simpleObject) {
             simpleObject.selected = cachedSettings.simpleObject.selected;
             Object.assign(simpleObject.values, cachedSettings.simpleObject.values);
+        }
+        if (cachedSettings.canvasDimensions) {
+            // Dimensions already applied to canvas, just update the object
+            canvasDimensions.width = cachedSettings.canvasDimensions.width;
+            canvasDimensions.height = cachedSettings.canvasDimensions.height;
         }
         if (cachedSettings.visualization) {
             visualization.showVelocity = cachedSettings.visualization.showVelocity;
@@ -839,12 +860,20 @@ async function main() {
     }
 
     function updateTextureWrapping(textures, wrapMode) {
+        // Save current texture unit
+        const currentTexUnit = gl.getParameter(gl.ACTIVE_TEXTURE);
+        
         // Update all LBM state textures
+        gl.activeTexture(gl.TEXTURE0);
         [textures.Q1Q4, textures.Q5Q8, textures.Q9].forEach(tex => {
             gl.bindTexture(gl.TEXTURE_2D, tex);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrapMode);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrapMode);
         });
+        
+        // Unbind and restore
+        gl.bindTexture(gl.TEXTURE_2D, null);
+        gl.activeTexture(currentTexUnit);
     }
 
     function setBoundaryMode(mode) {
@@ -970,6 +999,14 @@ async function main() {
         if (simpleObjectSelect) {
             simpleObjectSelect.value = simpleObject.selected;
         }
+
+        // Sync canvas dimension inputs
+        if (canvasWidthInput) {
+            canvasWidthInput.value = String(canvasDimensions.width);
+        }
+        if (canvasHeightInput) {
+            canvasHeightInput.value = String(canvasDimensions.height);
+        }
     }
 
     syncUiWithSettings();
@@ -1003,6 +1040,129 @@ async function main() {
 
     renderBoundaryModeParams();
     updateUiStatus();
+
+    // Canvas dimension change handlers with debouncing
+    let resizeTimeout = null;
+    const handleCanvasDimensionChange = () => {
+        if (resizeTimeout) clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(async () => {
+            const width = Number(canvasWidthInput?.value) || 600;
+            const height = Number(canvasHeightInput?.value) || 600;
+            const clampedWidth = clampValue(width, 100, 2000);
+            const clampedHeight = clampValue(height, 100, 2000);
+            
+            canvasDimensions.width = clampedWidth;
+            canvasDimensions.height = clampedHeight;
+            
+            if (canvasWidthInput) canvasWidthInput.value = String(clampedWidth);
+            if (canvasHeightInput) canvasHeightInput.value = String(clampedHeight);
+            
+            // Resize canvas
+            canvas.width = clampedWidth;
+            canvas.height = clampedHeight;
+            
+            console.log('Resizing canvas to:', canvas.width, 'x', canvas.height);
+            
+            // Update WebGL viewport immediately
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            
+            // Unbind everything first to avoid state issues
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.bindTexture(gl.TEXTURE_2D, null);
+            
+            // Delete old textures
+            if (ping.Q1Q4) gl.deleteTexture(ping.Q1Q4);
+            if (ping.Q5Q8) gl.deleteTexture(ping.Q5Q8);
+            if (ping.Q9) gl.deleteTexture(ping.Q9);
+            if (pong.Q1Q4) gl.deleteTexture(pong.Q1Q4);
+            if (pong.Q5Q8) gl.deleteTexture(pong.Q5Q8);
+            if (pong.Q9) gl.deleteTexture(pong.Q9);
+            if (wallsTexture) gl.deleteTexture(wallsTexture);
+            if (prevWallsTexture) gl.deleteTexture(prevWallsTexture);
+            
+            // Delete old framebuffers
+            if (ping.fbo) gl.deleteFramebuffer(ping.fbo);
+            if (pong.fbo) gl.deleteFramebuffer(pong.fbo);
+            if (wallInitFBO) gl.deleteFramebuffer(wallInitFBO);
+            if (prevWallFBO) gl.deleteFramebuffer(prevWallFBO);
+            
+            // Flush to ensure deletions complete
+            gl.flush();
+            gl.finish();
+            
+            // Recreate buffers with proper wrap mode (await the async function!)
+            const wrapMode = (boundaryMode.current === 'wrap') ? gl.REPEAT : gl.CLAMP_TO_EDGE;
+            
+            const newPing = await setupBuffers(canvas, gl, wrapMode);
+            const newPong = await setupBuffers(canvas, gl, wrapMode);
+            
+            Object.assign(ping, {
+                Q1Q4: newPing.Q1Q4,
+                Q5Q8: newPing.Q5Q8,
+                Q9: newPing.Q9,
+                fbo: createFBO(gl, newPing)
+            });
+            
+            Object.assign(pong, {
+                Q1Q4: newPong.Q1Q4,
+                Q5Q8: newPong.Q5Q8,
+                Q9: newPong.Q9,
+                fbo: createFBO(gl, newPong)
+            });
+            
+            // Recreate walls textures and FBOs with matching wrap mode
+            wallsTexture = createWallsTexture(canvas, gl, wrapMode);
+            prevWallsTexture = createWallsTexture(canvas, gl, wrapMode);
+            wallInitFBO = createWallInitFBO(gl, wallsTexture);
+            prevWallFBO = createWallInitFBO(gl, prevWallsTexture);
+            
+            // Verify FBO completeness
+            gl.bindFramebuffer(gl.FRAMEBUFFER, ping.fbo);
+            let status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+            if (status !== gl.FRAMEBUFFER_COMPLETE) {
+                console.error('Ping FBO incomplete after resize:', status.toString(16));
+            }
+            
+            gl.bindFramebuffer(gl.FRAMEBUFFER, pong.fbo);
+            status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+            if (status !== gl.FRAMEBUFFER_COMPLETE) {
+                console.error('Pong FBO incomplete after resize:', status.toString(16));
+            }
+            
+            gl.bindFramebuffer(gl.FRAMEBUFFER, wallInitFBO);
+            status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+            if (status !== gl.FRAMEBUFFER_COMPLETE) {
+                console.error('Wall init FBO incomplete after resize:', status.toString(16));
+            }
+            
+            gl.bindFramebuffer(gl.FRAMEBUFFER, prevWallFBO);
+            status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+            if (status !== gl.FRAMEBUFFER_COMPLETE) {
+                console.error('Prev wall FBO incomplete after resize:', status.toString(16));
+            }
+            
+            // Unbind framebuffer to avoid state issues
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            
+            // Unbind all texture units to clean state
+            for (let i = 0; i < 5; i++) {
+                gl.activeTexture(gl.TEXTURE0 + i);
+                gl.bindTexture(gl.TEXTURE_2D, null);
+            }
+            
+            console.log('Canvas resized to:', clampedWidth, 'x', clampedHeight);
+            
+            resetSimulation();
+            SettingsCache.save(settings);
+        }, 500);
+    };
+
+    if (canvasWidthInput) {
+        canvasWidthInput.addEventListener('change', handleCanvasDimensionChange);
+    }
+    if (canvasHeightInput) {
+        canvasHeightInput.addEventListener('change', handleCanvasDimensionChange);
+    }
 
     // Init is equivalent to reset
     resetSimulation();
