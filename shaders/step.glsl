@@ -124,7 +124,6 @@ void main() {
     
     if (isWall > 0.5) {
         // Bounce-back boundary condition: reverse populations
-        // For moving walls, we also accommodate wall velocity
         // Reference ordering: [(0,0), E, SE, S, SW, W, NW, N, NE]
         // Our array ordering: fnr[0=rest, 1=E, 2=SE, 3=S, 4=SW, 5=W, 6=NW, 7=N, 8=NE]
         
@@ -135,31 +134,9 @@ void main() {
         temp = fnr[4]; fnr[4] = fnr[8]; fnr[8] = temp;     // SW <-> NE
         temp = fnr[2]; fnr[2] = fnr[6]; fnr[6] = temp;     // SE <-> NW
         
-        // For moving walls: add wall velocity contribution
-        // I don't have moving walls yet but it's planned. I'm not sure this part works(yet)
-        if (length(vec2(wallVelX, wallVelY)) > 1e-6) {
-            float wallU2V2 = wallVelX * wallVelX + wallVelY * wallVelY;
-        
-            
-            // Override with wall-relative equilibrium
-            float m1_wall = rho * (-2.0 + 3.0*wallU2V2);
-            float m2_wall = rho * (1.0 - 3.0*wallU2V2);
-            float m4_wall = rho * (-wallVelX);
-            float m6_wall = rho * (-wallVelY);
-            float m7_wall = rho * (wallVelX*wallVelX - wallVelY*wallVelY);
-            float m8_wall = rho * wallVelX * wallVelY;
-            
-            // Recompute populations with wall velocity
-            fnr[0] = (1.0/9.0) * (rho - m1_wall + m2_wall);
-            fnr[1] = (1.0/36.0) * (4.0*rho - m1_wall - 2.0*m2_wall + 6.0*wallVelX - 6.0*m4_wall + 9.0*m7_wall);
-            fnr[2] = (1.0/36.0) * (4.0*rho + 2.0*m1_wall + m2_wall + 6.0*wallVelX + 3.0*m4_wall - 6.0*wallVelY - 3.0*m6_wall - 9.0*m8_wall);
-            fnr[3] = (1.0/36.0) * (4.0*rho - m1_wall - 2.0*m2_wall - 6.0*wallVelY + 6.0*m6_wall - 9.0*m7_wall);
-            fnr[4] = (1.0/36.0) * (4.0*rho + 2.0*m1_wall + m2_wall - 6.0*wallVelX - 3.0*m4_wall - 6.0*wallVelY - 3.0*m6_wall + 9.0*m8_wall);
-            fnr[5] = (1.0/36.0) * (4.0*rho - m1_wall - 2.0*m2_wall - 6.0*wallVelX + 6.0*m4_wall + 9.0*m7_wall);
-            fnr[6] = (1.0/36.0) * (4.0*rho + 2.0*m1_wall + m2_wall - 6.0*wallVelX - 3.0*m4_wall + 6.0*wallVelY + 3.0*m6_wall - 9.0*m8_wall);
-            fnr[7] = (1.0/36.0) * (4.0*rho - m1_wall - 2.0*m2_wall + 6.0*wallVelY - 6.0*m6_wall - 9.0*m7_wall);
-            fnr[8] = (1.0/36.0) * (4.0*rho + 2.0*m1_wall + m2_wall + 6.0*wallVelX + 3.0*m4_wall + 6.0*wallVelY + 3.0*m6_wall + 9.0*m8_wall);
-        }
+        // TODO: Implement proper moving wall boundary condition
+        // The current implementation was causing instability
+        // For now, walls are always static (no-slip BC via bounce-back)
     }
 
     // Skipping reordering and direct to output

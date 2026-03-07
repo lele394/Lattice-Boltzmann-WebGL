@@ -14,7 +14,7 @@ layout(location = 1) out vec4 out_Q5Q8;
 layout(location = 2) out float out_Q9;
 
 void main() {
-    vec2 center = vec2(0.5, 0.5);
+    vec2 center = vec2(0.85, 0.65);
     vec2 d = v_uv - center;
     float sigma = 0.08;
     float gaussian = exp(-dot(d, d) / (2.0 * sigma * sigma));
