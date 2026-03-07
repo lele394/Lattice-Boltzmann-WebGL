@@ -7,17 +7,19 @@ precision highp float;
 
 in vec2 v_uv;
 
+
+
 layout(location = 0) out vec4 out_Q1Q4;
 layout(location = 1) out vec4 out_Q5Q8;
 layout(location = 2) out float out_Q9;
 
 void main() {
-    float rho = 1.0;
+    vec2 center = vec2(0.5, 0.5);
+    vec2 d = v_uv - center;
+    float sigma = 0.08;
+    float gaussian = exp(-dot(d, d) / (2.0 * sigma * sigma));
+    float rho = 1.0 + (1.6 - 1.0) * gaussian;
     vec2 u = vec2(0.0, 0.0);
-    if (distance(v_uv, vec2(0.5)) < 0.1) {
-        rho = 1.6;
-        u = vec2(0.02, 0.0);
-    }
 
     float w[] = float[](4./9., 1./9., 1./9., 1./9., 1./9., 1./36., 1./36., 1./36., 1./36.);
     vec2 e[] = vec2[](vec2(0,0), vec2(1,0), vec2(0,1), vec2(-1,0), vec2(0,-1), vec2(1,1), vec2(-1,1), vec2(-1,-1), vec2(1,-1));

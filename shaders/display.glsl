@@ -28,6 +28,32 @@ vec3 heatmap(float v) {
     // Transition from Blue (slow) to Red (fast)
 }
 
+vec3 gist_ncar(float t) {
+    t = clamp(t, 0.0, 1.0);
+
+    vec3 c0 = vec3(0.000, 0.000, 0.502); // dark blue
+    vec3 c1 = vec3(0.000, 0.314, 1.000); // blue
+    vec3 c2 = vec3(0.000, 0.875, 1.000); // cyan
+    vec3 c3 = vec3(0.000, 1.000, 0.498); // green-cyan
+    vec3 c4 = vec3(1.000, 1.000, 0.000); // yellow
+    vec3 c5 = vec3(1.000, 0.498, 0.000); // orange
+    vec3 c6 = vec3(1.000, 0.000, 0.000); // red
+    vec3 c7 = vec3(0.878, 0.000, 1.000); // magenta
+
+    if (t < 1.0 / 7.0) return mix(c0, c1, t * 7.0);
+    if (t < 2.0 / 7.0) return mix(c1, c2, (t - 1.0 / 7.0) * 7.0);
+    if (t < 3.0 / 7.0) return mix(c2, c3, (t - 2.0 / 7.0) * 7.0);
+    if (t < 4.0 / 7.0) return mix(c3, c4, (t - 3.0 / 7.0) * 7.0);
+    if (t < 5.0 / 7.0) return mix(c4, c5, (t - 4.0 / 7.0) * 7.0);
+    if (t < 6.0 / 7.0) return mix(c5, c6, (t - 5.0 / 7.0) * 7.0);
+    return mix(c6, c7, (t - 6.0 / 7.0) * 7.0);
+}
+
+vec3 density_heatmap(float rho) {
+    float t = clamp((rho - 1.0) / 0.6, 0.0, 1.0);
+    return gist_ncar(t);
+}
+
 void main() {
     float f0 = texture(u_Q9, v_uv).r;
     vec4 f14 = texture(u_Q1Q4, v_uv);
@@ -53,12 +79,9 @@ void main() {
     // 3. Normal Visualization
     float dilation = 80.0;
     // vec3 speedCol = heatmap(speed * 5.0); 
-    vec3 speedCol = heatmap(speed * dilation / (1.0 + speed * dilation)); 
+    // vec3 speedCol = heatmap(speed * dilation / (1.0 + speed * dilation)); 
 
-    float densDiff = (rho - 1.0) * 10.0 + 0.5;
-    // Safety check for log input
-    densDiff = log(max(0.0001, densDiff + 1.0)) / log(1.5); 
-    vec3 densCol = vec3(densDiff);
+    vec3 densCol = density_heatmap(rho);
 
     // outColor = vec4(speedCol, 1.0);
     outColor = vec4(densCol, 1.0);

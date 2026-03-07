@@ -89,6 +89,11 @@ void main() {
     // --- INVERSE TRANSFORM (f = M^-1 * m) --- 
     // Apply reference Minv matrix to get reordered populations, thanks wolfram
     float fnr[9]; // fn reordered
+    /*
+    COmpiler should optimize constant ops
+    But the amount of shit I could cache here is insane
+    I'll do it eventually
+    */
     fnr[0] = (1.0/9.0) * (m0 - m1 + m2);
     fnr[1] = (1.0/36.0) * (4.0*m0 - m1 - 2.0*m2 + 6.0*m3 - 6.0*m4 + 9.0*m7);
     fnr[2] = (1.0/36.0) * (4.0*m0 + 2.0*m1 + m2 + 6.0*m3 + 3.0*m4 - 6.0*m5 - 3.0*m6 - 9.0*m8);

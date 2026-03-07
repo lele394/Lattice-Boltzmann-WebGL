@@ -8,7 +8,8 @@ Because it looks cool, and it makes cool graphs, that's why.
 > Can I try it?
 Yes, I should have setup a Github Pages for it. Check the about section of the repo
 
-
+> Is there videos of it?
+Yes, there is a [Youtube Playlist](https://www.youtube.com/playlist?list=PLbVMHgx1jRJ25z9HuNSBwIXIyp2sq--8g) Where I'll occasionally put the cool stuff.
 
 Just messing around with Lattice Boltzman simulation
 
