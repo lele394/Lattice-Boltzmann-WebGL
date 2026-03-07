@@ -6,6 +6,13 @@
     <title>Lattice Boltzman WebGL</title>
 </head>
 
+<!-- 
+
+This lot here is handled by Copilot. I didn't want to  spend time writing frontend, and sicne
+what I wanted was a simple control panel, I just let it do its thing.
+
+-->
+
 <style>
     body {
         margin: 0;
@@ -23,6 +30,7 @@
         display: block;
         border: 1px solid rgba(255, 255, 255, 0.1);
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        cursor: crosshair;
     }
 
     #sim-controls {
@@ -472,6 +480,45 @@
         color: #d88a5f;
     }
 
+    #hover-info {
+        position: fixed;
+        pointer-events: none;
+        z-index: 100;
+        background: rgba(20, 20, 24, 0.95);
+        color: #f2f2f2;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 11px;
+        line-height: 1.6;
+        font-family: 'Courier New', monospace;
+        backdrop-filter: blur(8px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+        min-width: 240px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    #hover-info-content {
+        white-space: pre-line;
+    }
+
+    #hover-info .label {
+        color: #888;
+        font-weight: 600;
+    }
+
+    #hover-info .value {
+        color: #9fb3ff;
+    }
+
+    #d2q9-canvas {
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 4px;
+        background: rgba(10, 10, 15, 0.5);
+    }
+
     /* Responsive: single column for smaller viewports */
     @media (max-height: 800px) {
         #controls-content {
@@ -490,6 +537,11 @@
     
 
     <canvas id="lbm-canvas" width="800" height="300"></canvas>
+
+    <div id="hover-info" style="display: none;">
+        <canvas id="d2q9-canvas" width="180" height="180"></canvas>
+        <div id="hover-info-content"></div>
+    </div>
 
     <div id="sim-controls">
         <div id="controls-header">
@@ -574,6 +626,11 @@
                         <input id="velocity-min-slider" type="range" min="0" max="0.5" step="0.001" value="0.0">
                         <input id="velocity-max-slider" type="range" min="0" max="0.5" step="0.001" value="0.3">
                     </div>
+                </div>
+
+                <div class="row" style="margin-top: 12px;">
+                    <input id="hover-info-toggle" type="checkbox" checked>
+                    <label for="hover-info-toggle">Show Hover Info</label>
                 </div>
 
                 <!-- Recording Section -->

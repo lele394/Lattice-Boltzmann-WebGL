@@ -25,7 +25,8 @@ const SettingsCache = {
                     densityMin: settings.visualization.densityMin,
                     densityMax: settings.visualization.densityMax,
                     velocityMin: settings.visualization.velocityMin,
-                    velocityMax: settings.visualization.velocityMax
+                    velocityMax: settings.visualization.velocityMax,
+                    showHoverInfo: settings.visualization.showHoverInfo
                 },
                 initialization: {
                     selectedModeId: settings.initialization.selectedModeId,
@@ -432,6 +433,11 @@ async function main() {
     const recordDownloadBtn = document.getElementById('record-download-btn');
     const recordIntervalInput = document.getElementById('record-interval-input');
     const recordingStatus = document.getElementById('recording-status');
+    const hoverInfoToggle = document.getElementById('hover-info-toggle');
+    const hoverInfoDiv = document.getElementById('hover-info');
+    const hoverInfoContent = document.getElementById('hover-info-content');
+    const d2q9Canvas = document.getElementById('d2q9-canvas');
+    const d2q9Ctx = d2q9Canvas ? d2q9Canvas.getContext('2d') : null;
 
     const canvasDimensions = {
         width: canvas.width,
@@ -508,7 +514,8 @@ async function main() {
         densityMin: 1.0,
         densityMax: 1.6,
         velocityMin: 0.0,
-        velocityMax: 0.3
+        velocityMax: 0.3,
+        showHoverInfo: true
     };
 
     const customBitmapOptions = {
@@ -580,6 +587,9 @@ async function main() {
             visualization.densityMax = cachedSettings.visualization.densityMax;
             visualization.velocityMin = cachedSettings.visualization.velocityMin;
             visualization.velocityMax = cachedSettings.visualization.velocityMax;
+            if (cachedSettings.visualization.showHoverInfo !== undefined) {
+                visualization.showHoverInfo = cachedSettings.visualization.showHoverInfo;
+            }
         }
         if (cachedSettings.initialization) {
             initialization.selectedModeId = cachedSettings.initialization.selectedModeId;
@@ -1505,6 +1515,226 @@ async function main() {
         SettingsCache.save(settings);
     });
 
+    // Hover info toggle
+    if (hoverInfoToggle) {
+        hoverInfoToggle.checked = visualization.showHoverInfo;
+        hoverInfoToggle.addEventListener('change', () => {
+            visualization.showHoverInfo = hoverInfoToggle.checked;
+            if (!visualization.showHoverInfo && hoverInfoDiv) {
+                hoverInfoDiv.style.display = 'none';
+            }
+            SettingsCache.save(settings);
+        });
+    }
+
+    // Mouse hover info functionality with live updates
+    let currentMousePos = null;
+    let lastMouseEvent = null;
+
+    if (canvas && hoverInfoDiv && hoverInfoContent) {
+        canvas.addEventListener('mousemove', (e) => {
+            if (!visualization.showHoverInfo) return;
+
+            lastMouseEvent = e;
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) * (canvas.width / rect.width));
+            const y = Math.floor((e.clientY - rect.top) * (canvas.height / rect.height));
+            
+            currentMousePos = { x, y, clientX: e.clientX, clientY: e.clientY };
+        });
+
+        canvas.addEventListener('mouseenter', (e) => {
+            if (!visualization.showHoverInfo) return;
+            lastMouseEvent = e;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            currentMousePos = null;
+            lastMouseEvent = null;
+            if (hoverInfoDiv) {
+                hoverInfoDiv.style.display = 'none';
+            }
+        });
+    }
+
+    // Function to draw D2Q9 lattice visualization
+    function drawD2Q9Lattice(ctx, f) {
+        const width = ctx.canvas.width;
+        const height = ctx.canvas.height;
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const scale = 40; // Distance from center to edge points
+
+        // Clear canvas
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = 'rgba(10, 10, 15, 0.5)';
+        ctx.fillRect(0, 0, width, height);
+
+        // D2Q9 directions: [dx, dy]
+        const directions = [
+            [0, 0],      // f0: center
+            [1, 0],      // f1: right
+            [0, -1],     // f2: top (negative Y because canvas Y is down)
+            [-1, 0],     // f3: left
+            [0, 1],      // f4: bottom
+            [1, -1],     // f5: top-right
+            [-1, -1],    // f6: top-left
+            [-1, 1],     // f7: bottom-left
+            [1, 1]       // f8: bottom-right
+        ];
+
+        // Draw grid lines
+        ctx.strokeStyle = 'rgba(100, 100, 120, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        // Vertical and horizontal
+        ctx.moveTo(centerX, 0);
+        ctx.lineTo(centerX, height);
+        ctx.moveTo(0, centerY);
+        ctx.lineTo(width, centerY);
+        // Diagonals
+        ctx.moveTo(0, 0);
+        ctx.lineTo(width, height);
+        ctx.moveTo(width, 0);
+        ctx.lineTo(0, height);
+        ctx.stroke();
+
+        // Draw directions and values
+        directions.forEach((dir, i) => {
+            const [dx, dy] = dir;
+            const endX = centerX + dx * scale;
+            const endY = centerY + dy * scale;
+
+            // Draw direction line
+            if (i > 0) { // Skip center for line drawing
+                ctx.strokeStyle = 'rgba(159, 179, 255, 0.5)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.lineTo(endX, endY);
+                ctx.stroke();
+
+                // Draw arrow head
+                const angle = Math.atan2(dy, dx);
+                const arrowSize = 8;
+                ctx.beginPath();
+                ctx.moveTo(endX, endY);
+                ctx.lineTo(
+                    endX - arrowSize * Math.cos(angle - Math.PI / 6),
+                    endY - arrowSize * Math.sin(angle - Math.PI / 6)
+                );
+                ctx.lineTo(
+                    endX - arrowSize * Math.cos(angle + Math.PI / 6),
+                    endY - arrowSize * Math.sin(angle + Math.PI / 6)
+                );
+                ctx.closePath();
+                ctx.fillStyle = 'rgba(159, 179, 255, 0.5)';
+                ctx.fill();
+            }
+
+            // Draw value text
+            const value = f[i].toFixed(3);
+            const textX = centerX + dx * scale * (i === 0 ? 0 : 1.3);
+            const textY = centerY + dy * scale * (i === 0 ? 0 : 1.3) + (i === 0 ? -18 : 0);
+
+            // Background for text
+            ctx.font = '11px "Courier New", monospace';
+            const metrics = ctx.measureText(value);
+            const padding = 3;
+            ctx.fillStyle = 'rgba(20, 20, 24, 0.9)';
+            ctx.fillRect(
+                textX - metrics.width / 2 - padding,
+                textY - 6 - padding,
+                metrics.width + padding * 2,
+                12 + padding * 2
+            );
+
+            // Draw text
+            ctx.fillStyle = i === 0 ? '#51cf66' : '#9fb3ff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(value, textX, textY);
+
+            // Draw index label
+            ctx.font = '9px "Courier New", monospace';
+            ctx.fillStyle = '#888';
+            ctx.fillText(`f${i}`, textX, textY + 12);
+        });
+
+        // Draw center dot
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#51cf66';
+        ctx.fill();
+    }
+
+    // Function to update hover info (called every frame)
+    function updateHoverInfo() {
+        if (!visualization.showHoverInfo || !currentMousePos || !hoverInfoDiv || !hoverInfoContent) {
+            return;
+        }
+
+        const { x, y, clientX, clientY } = currentMousePos;
+
+        // Read pixel data from all three textures (Q1Q4, Q5Q8, Q9)
+        gl.bindFramebuffer(gl.FRAMEBUFFER, readState.fbo);
+        
+        // Read from COLOR_ATTACHMENT0 (Q1Q4: f0, f1, f2, f3)
+        const q1q4Data = new Float32Array(4);
+        gl.readBuffer(gl.COLOR_ATTACHMENT0);
+        gl.readPixels(x, canvas.height - 1 - y, 1, 1, gl.RGBA, gl.FLOAT, q1q4Data);
+        
+        // Read from COLOR_ATTACHMENT1 (Q5Q8: f4, f5, f6, f7)
+        const q5q8Data = new Float32Array(4);
+        gl.readBuffer(gl.COLOR_ATTACHMENT1);
+        gl.readPixels(x, canvas.height - 1 - y, 1, 1, gl.RGBA, gl.FLOAT, q5q8Data);
+        
+        // Read from COLOR_ATTACHMENT2 (Q9: f8)
+        const q9Data = new Float32Array(1);
+        gl.readBuffer(gl.COLOR_ATTACHMENT2);
+        gl.readPixels(x, canvas.height - 1 - y, 1, 1, gl.RED, gl.FLOAT, q9Data);
+        
+        // D2Q9 distribution functions
+        const f = [
+            q1q4Data[0], // f0 (center)
+            q1q4Data[1], // f1 (right)
+            q1q4Data[2], // f2 (top)
+            q1q4Data[3], // f3 (left)
+            q5q8Data[0], // f4 (bottom)
+            q5q8Data[1], // f5 (top-right)
+            q5q8Data[2], // f6 (top-left)
+            q5q8Data[3], // f7 (bottom-left)
+            q9Data[0]    // f8 (bottom-right)
+        ];
+
+        // Calculate density (pressure) - sum of all distributions
+        const density = f.reduce((sum, val) => sum + val, 0);
+
+        // Calculate velocity components
+        const ux = (f[1] - f[3] + f[5] - f[6] - f[7] + f[8]) / (density || 1.0);
+        const uy = (f[2] - f[4] + f[5] + f[6] - f[7] - f[8]) / (density || 1.0);
+        const speed = Math.sqrt(ux * ux + uy * uy);
+
+        // Draw D2Q9 lattice
+        if (d2q9Ctx) {
+            drawD2Q9Lattice(d2q9Ctx, f);
+        }
+
+        // Update hover info display
+        hoverInfoContent.innerHTML = `
+<span class="label">Position:</span> <span class="value">${x}, ${y}</span>
+<span class="label">Density:</span> <span class="value">${density.toFixed(4)}</span>
+<span class="label">Velocity:</span> <span class="value">${speed.toFixed(4)}</span>
+<span class="label">Vx:</span> <span class="value">${ux.toFixed(4)}</span>
+<span class="label">Vy:</span> <span class="value">${uy.toFixed(4)}</span>
+        `.trim();
+
+        // Position the hover info near the mouse
+        hoverInfoDiv.style.display = 'flex';
+        hoverInfoDiv.style.left = (clientX + 15) + 'px';
+        hoverInfoDiv.style.top = (clientY + 15) + 'px';
+    }
+
     if (boundaryModeSelect) {
         boundaryModeSelect.addEventListener('change', () => {
             setBoundaryMode(boundaryModeSelect.value);
@@ -1702,6 +1932,7 @@ async function main() {
         }
         
         updateVelocityDisplay();
+        updateHoverInfo();
         requestAnimationFrame(frame);
     }
 
