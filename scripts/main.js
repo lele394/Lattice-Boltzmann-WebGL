@@ -16,6 +16,7 @@ const SettingsCache = {
                 },
                 boundaryMode: settings.boundaryMode.current,
                 boundaryModeParamsValues: settings.boundaryModeParamsValues,
+                simpleObject: settings.simpleObject,
                 visualization: {
                     showVelocity: settings.visualization.showVelocity,
                     densityMin: settings.visualization.densityMin,
@@ -86,6 +87,43 @@ const wallObjects = [
     }
 ];
 
+// Simple Objects with Parameters
+const simpleObjects = [
+    {
+        id: 'circle',
+        name: 'Circle',
+        shader: 'shaders/objects/circle.frag',
+        params: [
+            { key: 'centerX', label: 'X Position', uniform: 'u_centerX', value: 0.5, step: 0.01, min: 0.0, max: 1.0 },
+            { key: 'centerY', label: 'Y Position', uniform: 'u_centerY', value: 0.5, step: 0.01, min: 0.0, max: 1.0 },
+            { key: 'radius', label: 'Radius', uniform: 'u_radius', value: 0.15, step: 0.01, min: 0.01, max: 0.5 }
+        ]
+    },
+    {
+        id: 'rectangle',
+        name: 'Rectangle',
+        shader: 'shaders/objects/rectangle.frag',
+        params: [
+            { key: 'centerX', label: 'X Position', uniform: 'u_centerX', value: 0.5, step: 0.01, min: 0.0, max: 1.0 },
+            { key: 'centerY', label: 'Y Position', uniform: 'u_centerY', value: 0.5, step: 0.01, min: 0.0, max: 1.0 },
+            { key: 'width', label: 'Width', uniform: 'u_width', value: 0.3, step: 0.01, min: 0.01, max: 1.0 },
+            { key: 'height', label: 'Height', uniform: 'u_height', value: 0.2, step: 0.01, min: 0.01, max: 1.0 },
+            { key: 'rotation', label: 'Rotation (deg)', uniform: 'u_rotation', value: 0, step: 1, min: 0, max: 360, isAngle: true }
+        ]
+    },
+    {
+        id: 'triangle',
+        name: 'Triangle',
+        shader: 'shaders/objects/triangle.frag',
+        params: [
+            { key: 'centerX', label: 'X Position', uniform: 'u_centerX', value: 0.5, step: 0.01, min: 0.0, max: 1.0 },
+            { key: 'centerY', label: 'Y Position', uniform: 'u_centerY', value: 0.5, step: 0.01, min: 0.0, max: 1.0 },
+            { key: 'size', label: 'Size', uniform: 'u_size', value: 0.15, step: 0.01, min: 0.01, max: 0.5 },
+            { key: 'rotation', label: 'Rotation (deg)', uniform: 'u_rotation', value: 0, step: 1, min: 0, max: 360, isAngle: true }
+        ]
+    }
+];
+
 const shaderConfig = {
     vs: 'shaders/vert.glsl',
     init: 'shaders/init/inkDrop.frag',
@@ -95,6 +133,11 @@ const shaderConfig = {
     wallInit: 'shaders/init/walls.frag',
     wallsCopy: 'shaders/wallsCopy.frag'
 };
+
+// Add simple object shaders to config
+simpleObjects.forEach(obj => {
+    shaderConfig[obj.id] = obj.shader;
+});
 
 const initializationModes = [
     {
@@ -374,6 +417,19 @@ async function main() {
         });
     });
 
+    const simpleObject = {
+        selected: 'none', // 'none' or object id
+        values: {}
+    };
+
+    // Initialize simple object parameters
+    simpleObjects.forEach(obj => {
+        simpleObject.values[obj.id] = {};
+        obj.params.forEach(param => {
+            simpleObject.values[obj.id][param.key] = param.value;
+        });
+    });
+
     const visualization = {
         showVelocity: false,
         densityMin: 1.0,
@@ -398,6 +454,7 @@ async function main() {
         simControl,
         boundaryMode,
         boundaryModeParamsValues,
+        simpleObject,
         visualization,
         initialization,
         wallObjects
@@ -415,6 +472,10 @@ async function main() {
         }
         if (cachedSettings.boundaryModeParamsValues) {
             Object.assign(boundaryModeParamsValues, cachedSettings.boundaryModeParamsValues);
+        }
+        if (cachedSettings.simpleObject) {
+            simpleObject.selected = cachedSettings.simpleObject.selected;
+            Object.assign(simpleObject.values, cachedSettings.simpleObject.values);
         }
         if (cachedSettings.visualization) {
             visualization.showVelocity = cachedSettings.visualization.showVelocity;
@@ -544,6 +605,73 @@ async function main() {
             row.appendChild(label);
             row.appendChild(input);
             boundaryModeParamsContainer.appendChild(row);
+        });
+    }
+
+    function initializeSimpleObjectUi() {
+        const simpleObjectSelect = document.getElementById('simple-object-select');
+        if (!simpleObjectSelect) return;
+
+        // Populate dropdown
+        simpleObjectSelect.innerHTML = '<option value="none">None</option>';
+        simpleObjects.forEach(obj => {
+            const option = document.createElement('option');
+            option.value = obj.id;
+            option.textContent = obj.name;
+            simpleObjectSelect.appendChild(option);
+        });
+
+        simpleObjectSelect.value = simpleObject.selected;
+        simpleObjectSelect.addEventListener('change', () => {
+            simpleObject.selected = simpleObjectSelect.value;
+            renderSimpleObjectParams();
+            resetSimulation();
+            SettingsCache.save(settings);
+        });
+
+        renderSimpleObjectParams();
+    }
+
+    function renderSimpleObjectParams() {
+        const simpleObjectParamsContainer = document.getElementById('simple-object-params-container');
+        if (!simpleObjectParamsContainer) return;
+        simpleObjectParamsContainer.innerHTML = '';
+
+        if (simpleObject.selected === 'none') return;
+
+        const obj = simpleObjects.find(o => o.id === simpleObject.selected);
+        if (!obj) return;
+
+        obj.params.forEach(param => {
+            const row = document.createElement('div');
+            row.className = 'row';
+
+            const label = document.createElement('label');
+            label.htmlFor = `simple-obj-param-${param.key}`;
+            label.textContent = param.label;
+
+            const input = document.createElement('input');
+            input.id = `simple-obj-param-${param.key}`;
+            input.type = 'number';
+            input.step = String(param.step);
+            input.min = String(param.min);
+            input.max = String(param.max);
+            input.value = String(simpleObject.values[simpleObject.selected][param.key]);
+
+            input.addEventListener('change', () => {
+                const parsed = Number(input.value);
+                const fallback = simpleObject.values[simpleObject.selected][param.key];
+                const numeric = Number.isFinite(parsed) ? parsed : fallback;
+                const clamped = clampValue(numeric, param.min, param.max);
+                simpleObject.values[simpleObject.selected][param.key] = clamped;
+                input.value = String(clamped);
+                resetSimulation();
+                SettingsCache.save(settings);
+            });
+
+            row.appendChild(label);
+            row.appendChild(input);
+            simpleObjectParamsContainer.appendChild(row);
         });
     }
 
@@ -680,6 +808,32 @@ async function main() {
             }
         });
         
+        // Render simple object if selected
+        if (simpleObject.selected !== 'none') {
+            const obj = simpleObjects.find(o => o.id === simpleObject.selected);
+            if (obj && programs[obj.id]) {
+                gl.useProgram(programs[obj.id]);
+                
+                const resLoc = gl.getUniformLocation(programs[obj.id], "u_res");
+                if (resLoc !== null) gl.uniform2f(resLoc, canvas.width, canvas.height);
+                
+                // Pass all parameters to the shader
+                obj.params.forEach(param => {
+                    const loc = gl.getUniformLocation(programs[obj.id], param.uniform);
+                    if (loc !== null) {
+                        let value = simpleObject.values[obj.id][param.key];
+                        // Convert degrees to radians for angle parameters
+                        if (param.isAngle) {
+                            value = value * Math.PI / 180.0;
+                        }
+                        gl.uniform1f(loc, value);
+                    }
+                });
+                
+                gl.drawArrays(gl.TRIANGLES, 0, 6);
+            }
+        }
+        
         // Disable blending
         gl.disable(gl.BLEND);
     }
@@ -772,6 +926,7 @@ async function main() {
     }
 
     initializeInitializationUi();
+    initializeSimpleObjectUi();
 
     // Sync UI with cached settings
     function syncUiWithSettings() {
@@ -809,6 +964,12 @@ async function main() {
                 checkbox.checked = obj.enabled;
             }
         });
+
+        // Sync simple object select
+        const simpleObjectSelect = document.getElementById('simple-object-select');
+        if (simpleObjectSelect) {
+            simpleObjectSelect.value = simpleObject.selected;
+        }
     }
 
     syncUiWithSettings();
