@@ -254,8 +254,7 @@ function runStep(gl, programs, readState, writeState, canvas, wallsTexture, prev
     // Pass tunnel velocity parameter
     const tunnelVelLoc = gl.getUniformLocation(programs.step, "u_tunnelVelocity");
     if (tunnelVelLoc !== null) {
-        const tunnelVel = boundaryModeParamsValues.airflowTunnel?.tunnelVelocity ?? -0.1;
-        gl.uniform1f(tunnelVelLoc, tunnelVel);
+        gl.uniform1f(tunnelVelLoc, boundaryModeParamsValues.actualAirflow ?? 0.0);
     }
     
     gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -392,7 +391,10 @@ async function main() {
     const stepRateSlider = document.getElementById('step-rate-slider');
     const initTypeSelect = document.getElementById('init-type-select');
     const initParamsContainer = document.getElementById('init-params-container');
-    const vizVelocityToggle = document.getElementById('viz-velocity-toggle');
+    const vizDensityBtn = document.getElementById('viz-density-btn');
+    const vizVelocityBtn = document.getElementById('viz-velocity-btn');
+    const densityRangeBlock = document.getElementById('density-range-block');
+    const velocityRangeBlock = document.getElementById('velocity-range-block');
     const densityMinSlider = document.getElementById('density-min-slider');
     const densityMaxSlider = document.getElementById('density-max-slider');
     const densityRangeFill = document.getElementById('density-range-fill');
@@ -431,6 +433,11 @@ async function main() {
         open: {}
     };
 
+    // Track actual airflow velocity (separate from target setting)
+    // This gradually changes towards the target to prevent instability
+    let actualAirflowVelocity = 0.0;
+    const AIRFLOW_RAMP_RATE = 0.00005; // 
+
     // Initialize boundary mode parameters
     Object.keys(boundaryModeParams).forEach(modeKey => {
         boundaryModeParams[modeKey].forEach(param => {
@@ -452,11 +459,11 @@ async function main() {
     });
 
     const visualization = {
-        showVelocity: false,
+        showVelocity: true,
         densityMin: 1.0,
         densityMax: 1.6,
         velocityMin: 0.0,
-        velocityMax: 0.2
+        velocityMax: 0.3
     };
 
     const initialization = {
@@ -603,35 +610,104 @@ async function main() {
 
         const params = boundaryModeParams[boundaryMode.current] || [];
         params.forEach(param => {
-            const row = document.createElement('div');
-            row.className = 'row';
+            const sliderBlock = document.createElement('div');
+            sliderBlock.className = 'slider-block';
+            sliderBlock.style.marginTop = '10px';
+
+            const sliderHeader = document.createElement('div');
+            sliderHeader.className = 'slider-header';
 
             const label = document.createElement('label');
-            label.htmlFor = `boundary-param-${param.key}`;
+            label.htmlFor = `boundary-param-${param.key}-slider`;
             label.textContent = param.label;
 
-            const input = document.createElement('input');
-            input.id = `boundary-param-${param.key}`;
-            input.type = 'number';
-            input.step = String(param.step);
-            input.min = String(param.min);
-            input.max = String(param.max);
-            input.value = String(boundaryModeParamsValues[boundaryMode.current][param.key]);
+            const numberInput = document.createElement('input');
+            numberInput.id = `boundary-param-${param.key}-input`;
+            numberInput.type = 'number';
+            numberInput.step = String(param.step);
+            numberInput.min = String(param.min);
+            numberInput.max = String(param.max);
+            numberInput.value = String(boundaryModeParamsValues[boundaryMode.current][param.key]);
+            numberInput.style.width = '70px';
+            numberInput.style.textAlign = 'center';
 
-            input.addEventListener('change', () => {
-                const parsed = Number(input.value);
+            const slider = document.createElement('input');
+            slider.id = `boundary-param-${param.key}-slider`;
+            slider.type = 'range';
+            slider.step = String(param.step);
+            slider.min = String(param.min);
+            slider.max = String(param.max);
+            slider.value = String(boundaryModeParamsValues[boundaryMode.current][param.key]);
+            slider.style.width = '100%';
+
+            const velocityDisplay = document.createElement('div');
+            velocityDisplay.id = `boundary-param-${param.key}-display`;
+            velocityDisplay.style.fontSize = '11px';
+            velocityDisplay.style.marginTop = '4px';
+            velocityDisplay.style.display = 'flex';
+            velocityDisplay.style.justifyContent = 'space-between';
+            velocityDisplay.innerHTML = `
+                <span>Target: <span id="boundary-param-${param.key}-target">0.00</span></span>
+                <span style="color: #888;">Actual: <span id="boundary-param-${param.key}-actual">0.00</span></span>
+            `;
+
+            const updateValue = (value) => {
+                const parsed = Number(value);
                 const fallback = boundaryModeParamsValues[boundaryMode.current][param.key];
                 const numeric = Number.isFinite(parsed) ? parsed : fallback;
                 const clamped = clampValue(numeric, param.min, param.max);
                 boundaryModeParamsValues[boundaryMode.current][param.key] = clamped;
-                input.value = String(clamped);
+                numberInput.value = String(clamped.toFixed(2));
+                slider.value = String(clamped);
+                updateVelocityDisplay();
+                SettingsCache.save(settings);
+            };
+
+            numberInput.addEventListener('change', () => {
+                updateValue(numberInput.value);
+            });
+
+            numberInput.addEventListener('input', () => {
+                const parsed = Number(numberInput.value);
+                if (Number.isFinite(parsed)) {
+                    const clamped = clampValue(parsed, param.min, param.max);
+                    slider.value = String(clamped);
+                }
+            });
+
+            slider.addEventListener('input', () => {
+                const value = Number(slider.value);
+                boundaryModeParamsValues[boundaryMode.current][param.key] = value;
+                numberInput.value = String(value.toFixed(2));
+                updateVelocityDisplay();
                 SettingsCache.save(settings);
             });
 
-            row.appendChild(label);
-            row.appendChild(input);
-            boundaryModeParamsContainer.appendChild(row);
+            sliderHeader.appendChild(label);
+            sliderHeader.appendChild(numberInput);
+            sliderBlock.appendChild(sliderHeader);
+            sliderBlock.appendChild(slider);
+            sliderBlock.appendChild(velocityDisplay);
+            boundaryModeParamsContainer.appendChild(sliderBlock);
+
+            // Initial display update
+            updateVelocityDisplay();
         });
+    }
+
+    function updateVelocityDisplay() {
+        if (boundaryMode.current === 'airflowTunnel') {
+            const targetVelocity = boundaryModeParamsValues.airflowTunnel?.tunnelVelocity ?? 0.0;
+            const targetElem = document.getElementById('boundary-param-tunnelVelocity-target');
+            const actualElem = document.getElementById('boundary-param-tunnelVelocity-actual');
+            
+            if (targetElem) {
+                targetElem.textContent = targetVelocity.toFixed(3);
+            }
+            if (actualElem) {
+                actualElem.textContent = actualAirflowVelocity.toFixed(3);
+            }
+        }
     }
 
     function initializeSimpleObjectUi() {
@@ -916,6 +992,10 @@ async function main() {
         stepBudget = 0;
         simControl.stepRequests = 0;
         lastTimeMs = 0;
+        
+        // Reset actual airflow velocity
+        actualAirflowVelocity = 0.0;
+        updateVelocityDisplay();
 
         drawDisplay(gl, programs, readState, canvas, wallsTexture, visualization);
     }
@@ -1023,6 +1103,21 @@ async function main() {
     initializeInitializationUi();
     initializeSimpleObjectUi();
 
+    // Function to update visualization mode UI
+    function updateVisualizationMode() {
+        if (visualization.showVelocity) {
+            if (vizVelocityBtn) vizVelocityBtn.classList.add('active');
+            if (vizDensityBtn) vizDensityBtn.classList.remove('active');
+            if (velocityRangeBlock) velocityRangeBlock.style.display = 'block';
+            if (densityRangeBlock) densityRangeBlock.style.display = 'none';
+        } else {
+            if (vizDensityBtn) vizDensityBtn.classList.add('active');
+            if (vizVelocityBtn) vizVelocityBtn.classList.remove('active');
+            if (densityRangeBlock) densityRangeBlock.style.display = 'block';
+            if (velocityRangeBlock) velocityRangeBlock.style.display = 'none';
+        }
+    }
+
     // Sync UI with cached settings
     function syncUiWithSettings() {
         // Sync step rate input and slider
@@ -1039,9 +1134,7 @@ async function main() {
         }
 
         // Sync velocity toggle
-        if (vizVelocityToggle) {
-            vizVelocityToggle.checked = visualization.showVelocity;
-        }
+        updateVisualizationMode();
 
         // Sync density sliders
         if (densityMinSlider && densityMaxSlider) {
@@ -1080,9 +1173,18 @@ async function main() {
 
     syncUiWithSettings();
 
-    if (vizVelocityToggle) {
-        vizVelocityToggle.addEventListener('change', () => {
-            visualization.showVelocity = vizVelocityToggle.checked;
+    if (vizDensityBtn) {
+        vizDensityBtn.addEventListener('click', () => {
+            visualization.showVelocity = false;
+            updateVisualizationMode();
+            SettingsCache.save(settings);
+        });
+    }
+
+    if (vizVelocityBtn) {
+        vizVelocityBtn.addEventListener('click', () => {
+            visualization.showVelocity = true;
+            updateVisualizationMode();
             SettingsCache.save(settings);
         });
     }
@@ -1261,6 +1363,21 @@ async function main() {
                 initializeWalls(simulationIteration, true);
             }
 
+            // Gradually adjust actual airflow velocity towards target
+            if (boundaryMode.current === 'airflowTunnel') {
+                const targetVelocity = boundaryModeParamsValues.airflowTunnel?.tunnelVelocity ?? 0.0;
+                const diff = targetVelocity - actualAirflowVelocity;
+                if (Math.abs(diff) < AIRFLOW_RAMP_RATE) {
+                    actualAirflowVelocity = targetVelocity;
+                } else {
+                    actualAirflowVelocity += Math.sign(diff) * AIRFLOW_RAMP_RATE;
+                }
+            } else {
+                // Reset to zero when not in airflow tunnel mode
+                actualAirflowVelocity = 0.0;
+            }
+            boundaryModeParamsValues.actualAirflow = actualAirflowVelocity;
+
             runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture, boundaryMode, boundaryModeParamsValues);
 
             const temp = readState;
@@ -1274,6 +1391,7 @@ async function main() {
         }
 
         drawDisplay(gl, programs, readState, canvas, wallsTexture, visualization);
+        updateVelocityDisplay();
         requestAnimationFrame(frame);
     }
 
