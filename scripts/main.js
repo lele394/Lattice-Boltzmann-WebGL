@@ -30,6 +30,7 @@ const SettingsCache = {
                     selectedModeId: settings.initialization.selectedModeId,
                     values: settings.initialization.values
                 },
+                customBitmapOptions: settings.customBitmapOptions,
                 wallObjects: settings.wallObjects
                     .filter(obj => obj.id !== 'boundaryWalls')
                     .map(obj => ({
@@ -480,6 +481,12 @@ async function main() {
         velocityMax: 0.3
     };
 
+    const customBitmapOptions = {
+        flipX: false,
+        flipY: false,
+        invertMask: false
+    };
+
     const initialization = {
         selectedModeId: 'uniform',
         values: {}
@@ -497,6 +504,7 @@ async function main() {
         boundaryMode,
         boundaryModeParamsValues,
         simpleObject,
+        customBitmapOptions,
         canvasDimensions,
         visualization,
         initialization,
@@ -518,6 +526,9 @@ async function main() {
         if (cachedSettings.simpleObject) {
             simpleObject.selected = cachedSettings.simpleObject.selected;
             Object.assign(simpleObject.values, cachedSettings.simpleObject.values);
+        }
+        if (cachedSettings.customBitmapOptions) {
+            Object.assign(customBitmapOptions, cachedSettings.customBitmapOptions);
         }
         if (cachedSettings.canvasDimensions) {
             // Dimensions already applied to canvas, just update the object
@@ -826,6 +837,58 @@ async function main() {
 
             clearRow.appendChild(clearButton);
             simpleObjectParamsContainer.appendChild(clearRow);
+
+            const optionsTitle = document.createElement('div');
+            optionsTitle.textContent = 'Bitmap Options';
+            optionsTitle.style.fontSize = '11px';
+            optionsTitle.style.fontWeight = '600';
+            optionsTitle.style.letterSpacing = '0.6px';
+            optionsTitle.style.textTransform = 'uppercase';
+            optionsTitle.style.color = '#9aa0b8';
+            optionsTitle.style.marginTop = '10px';
+            optionsTitle.style.marginBottom = '8px';
+            simpleObjectParamsContainer.appendChild(optionsTitle);
+
+            const optionsRow = document.createElement('div');
+            optionsRow.style.display = 'grid';
+            optionsRow.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
+            optionsRow.style.gap = '6px';
+            optionsRow.style.marginBottom = '8px';
+
+            const makeToggleButton = (label, key) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.textContent = label;
+                button.style.fontSize = '11px';
+                button.style.padding = '6px 8px';
+                button.style.borderRadius = '8px';
+                button.style.border = '1px solid #4a4f62';
+                button.style.cursor = 'pointer';
+
+                const applyStyle = () => {
+                    const enabled = customBitmapOptions[key];
+                    button.style.background = enabled
+                        ? 'linear-gradient(135deg, #305da8 0%, #203f75 100%)'
+                        : 'linear-gradient(135deg, #2b2f40 0%, #1f2230 100%)';
+                    button.style.borderColor = enabled ? '#5f8edc' : '#4a4f62';
+                    button.style.color = enabled ? '#ffffff' : '#d2d8ea';
+                };
+
+                button.addEventListener('click', () => {
+                    customBitmapOptions[key] = !customBitmapOptions[key];
+                    applyStyle();
+                    resetSimulation();
+                    SettingsCache.save(settings);
+                });
+
+                applyStyle();
+                return button;
+            };
+
+            optionsRow.appendChild(makeToggleButton('Horizontal Flip', 'flipX'));
+            optionsRow.appendChild(makeToggleButton('Vertical Flip', 'flipY'));
+            optionsRow.appendChild(makeToggleButton('Invert Mask', 'invertMask'));
+            simpleObjectParamsContainer.appendChild(optionsRow);
         }
 
         obj.params.forEach(param => {
@@ -1033,6 +1096,21 @@ async function main() {
                             gl.activeTexture(gl.TEXTURE0 + BITMAP_TEXTURE_UNIT);
                             gl.bindTexture(gl.TEXTURE_2D, customBitmapState.texture);
                             gl.uniform1i(maskLoc, BITMAP_TEXTURE_UNIT);
+                        }
+
+                        const flipXLoc = gl.getUniformLocation(programs[obj.id], 'u_flipX');
+                        if (flipXLoc !== null) {
+                            gl.uniform1f(flipXLoc, customBitmapOptions.flipX ? 1.0 : 0.0);
+                        }
+
+                        const flipYLoc = gl.getUniformLocation(programs[obj.id], 'u_flipY');
+                        if (flipYLoc !== null) {
+                            gl.uniform1f(flipYLoc, customBitmapOptions.flipY ? 1.0 : 0.0);
+                        }
+
+                        const invertLoc = gl.getUniformLocation(programs[obj.id], 'u_invertMask');
+                        if (invertLoc !== null) {
+                            gl.uniform1f(invertLoc, customBitmapOptions.invertMask ? 1.0 : 0.0);
                         }
                     }
                 }
