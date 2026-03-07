@@ -3,6 +3,61 @@ import { createFBO, createWallInitFBO } from './fbo.js';
 import { setupQuad } from './shader_helper.js';
 import { shadersCompiler } from './shader_helper.js';
 
+// Settings Cache Manager
+const SettingsCache = {
+    STORAGE_KEY: 'lbm_settings',
+    
+    save(settings) {
+        try {
+            const data = {
+                simControl: {
+                    isPlaying: settings.simControl.isPlaying,
+                    maxStepsPerSecond: settings.simControl.maxStepsPerSecond
+                },
+                boundaryMode: settings.boundaryMode.current,
+                visualization: {
+                    showVelocity: settings.visualization.showVelocity,
+                    densityMin: settings.visualization.densityMin,
+                    densityMax: settings.visualization.densityMax,
+                    velocityMin: settings.visualization.velocityMin,
+                    velocityMax: settings.visualization.velocityMax
+                },
+                initialization: {
+                    selectedModeId: settings.initialization.selectedModeId,
+                    values: settings.initialization.values
+                },
+                wallObjects: settings.wallObjects
+                    .filter(obj => obj.id !== 'boundaryWalls')
+                    .map(obj => ({
+                        id: obj.id,
+                        enabled: obj.enabled
+                    }))
+            };
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+        } catch (e) {
+            console.warn('Failed to save settings to cache:', e);
+        }
+    },
+    
+    load() {
+        try {
+            const data = localStorage.getItem(this.STORAGE_KEY);
+            return data ? JSON.parse(data) : null;
+        } catch (e) {
+            console.warn('Failed to load settings from cache:', e);
+            return null;
+        }
+    },
+    
+    clear() {
+        try {
+            localStorage.removeItem(this.STORAGE_KEY);
+        } catch (e) {
+            console.warn('Failed to clear settings cache:', e);
+        }
+    }
+};
+
 
 // Wall Objects Registry
 const wallObjects = [
@@ -252,6 +307,7 @@ async function main() {
         // Update registry when checkbox changes
         checkbox.addEventListener('change', () => {
             obj.enabled = checkbox.checked;
+            SettingsCache.save(settings);
         });
     });
 
@@ -302,6 +358,52 @@ async function main() {
         });
     });
 
+    // Settings object for caching
+    const settings = {
+        simControl,
+        boundaryMode,
+        visualization,
+        initialization,
+        wallObjects
+    };
+
+    // Load settings from cache
+    const cachedSettings = SettingsCache.load();
+    if (cachedSettings) {
+        if (cachedSettings.simControl) {
+            simControl.isPlaying = cachedSettings.simControl.isPlaying;
+            simControl.maxStepsPerSecond = cachedSettings.simControl.maxStepsPerSecond;
+        }
+        if (cachedSettings.boundaryMode) {
+            boundaryMode.current = cachedSettings.boundaryMode;
+        }
+        if (cachedSettings.visualization) {
+            visualization.showVelocity = cachedSettings.visualization.showVelocity;
+            visualization.densityMin = cachedSettings.visualization.densityMin;
+            visualization.densityMax = cachedSettings.visualization.densityMax;
+            visualization.velocityMin = cachedSettings.visualization.velocityMin;
+            visualization.velocityMax = cachedSettings.visualization.velocityMax;
+        }
+        if (cachedSettings.initialization) {
+            initialization.selectedModeId = cachedSettings.initialization.selectedModeId;
+            Object.assign(initialization.values, cachedSettings.initialization.values);
+        }
+        if (cachedSettings.wallObjects) {
+            cachedSettings.wallObjects.forEach(cached => {
+                const wallObj = wallObjects.find(obj => obj.id === cached.id);
+                if (wallObj && !wallObj.hideFromUI) {
+                    wallObj.enabled = cached.enabled;
+                }
+            });
+        }
+        
+        // Sync boundary walls state based on loaded boundary mode
+        const boundaryWallObj = wallObjects.find(obj => obj.id === 'boundaryWalls');
+        if (boundaryWallObj) {
+            boundaryWallObj.enabled = (boundaryMode.current === 'boundary');
+        }
+    }
+
     function clampValue(value, minValue, maxValue) {
         return Math.min(maxValue, Math.max(minValue, value));
     }
@@ -338,6 +440,7 @@ async function main() {
                 const clamped = clampValue(numeric, param.min, param.max);
                 initialization.values[param.key] = clamped;
                 input.value = String(clamped);
+                SettingsCache.save(settings);
             });
 
             row.appendChild(label);
@@ -361,6 +464,7 @@ async function main() {
         initTypeSelect.addEventListener('change', () => {
             initialization.selectedModeId = initTypeSelect.value;
             renderInitializationParams();
+            SettingsCache.save(settings);
         });
 
         renderInitializationParams();
@@ -547,7 +651,11 @@ async function main() {
     }
 
     function updateUiStatus() {
-        if (playPauseBtn) playPauseBtn.textContent = simControl.isPlaying ? 'Pause' : 'Play';
+        if (playPauseBtn) {
+            playPauseBtn.textContent = simControl.isPlaying ? 'Pause' : 'Play';
+            playPauseBtn.classList.remove('playing', 'paused');
+            playPauseBtn.classList.add(simControl.isPlaying ? 'playing' : 'paused');
+        }
         if (simStatus) simStatus.textContent = simControl.isPlaying ? 'Running' : 'Paused';
     }
 
@@ -555,6 +663,7 @@ async function main() {
         playPauseBtn.addEventListener('click', () => {
             simControl.isPlaying = !simControl.isPlaying;
             updateUiStatus();
+            SettingsCache.save(settings);
         });
     }
 
@@ -576,30 +685,75 @@ async function main() {
             const sanitized = Number.isFinite(parsed) ? Math.max(1, Math.min(2000, Math.floor(parsed))) : 60;
             simControl.maxStepsPerSecond = sanitized;
             stepRateInput.value = String(sanitized);
+            SettingsCache.save(settings);
         });
     }
 
     initializeInitializationUi();
 
+    // Sync UI with cached settings
+    function syncUiWithSettings() {
+        // Sync step rate input
+        if (stepRateInput) {
+            stepRateInput.value = String(simControl.maxStepsPerSecond);
+        }
+
+        // Sync boundary mode
+        if (boundaryModeSelect) {
+            boundaryModeSelect.value = boundaryMode.current;
+        }
+
+        // Sync velocity toggle
+        if (vizVelocityToggle) {
+            vizVelocityToggle.checked = visualization.showVelocity;
+        }
+
+        // Sync density sliders
+        if (densityMinSlider && densityMaxSlider) {
+            densityMinSlider.value = String(visualization.densityMin);
+            densityMaxSlider.value = String(visualization.densityMax);
+        }
+
+        // Sync velocity sliders
+        if (velocityMinSlider && velocityMaxSlider) {
+            velocityMinSlider.value = String(visualization.velocityMin);
+            velocityMaxSlider.value = String(visualization.velocityMax);
+        }
+
+        // Sync wall object checkboxes
+        wallObjects.filter(obj => !obj.hideFromUI).forEach(obj => {
+            const checkbox = document.getElementById(`obj-${obj.id}`);
+            if (checkbox) {
+                checkbox.checked = obj.enabled;
+            }
+        });
+    }
+
+    syncUiWithSettings();
+
     if (vizVelocityToggle) {
         vizVelocityToggle.addEventListener('change', () => {
             visualization.showVelocity = vizVelocityToggle.checked;
+            SettingsCache.save(settings);
         });
     }
 
     setupDualSlider(densityMinSlider, densityMaxSlider, densityRangeValue, densityRangeFill, (minValue, maxValue) => {
         visualization.densityMin = minValue;
         visualization.densityMax = maxValue;
+        SettingsCache.save(settings);
     });
 
     setupDualSlider(velocityMinSlider, velocityMaxSlider, velocityRangeValue, velocityRangeFill, (minValue, maxValue) => {
         visualization.velocityMin = minValue;
         visualization.velocityMax = maxValue;
+        SettingsCache.save(settings);
     });
 
     if (boundaryModeSelect) {
         boundaryModeSelect.addEventListener('change', () => {
             setBoundaryMode(boundaryModeSelect.value);
+            SettingsCache.save(settings);
         });
     }
 
