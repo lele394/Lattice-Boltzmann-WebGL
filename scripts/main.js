@@ -15,6 +15,7 @@ const SettingsCache = {
                     maxStepsPerSecond: settings.simControl.maxStepsPerSecond
                 },
                 boundaryMode: settings.boundaryMode.current,
+                boundaryModeParamsValues: settings.boundaryModeParamsValues,
                 visualization: {
                     showVelocity: settings.visualization.showVelocity,
                     densityMin: settings.visualization.densityMin,
@@ -116,6 +117,16 @@ const initializationModes = [
     }
 ];
 
+// Boundary mode parameters
+const boundaryModeParams = {
+    airflowTunnel: [
+        { key: 'tunnelVelocity', label: 'Tunnel Velocity', uniform: 'u_tunnelVelocity', value: -0.1, step: 0.01, min: -0.5, max: 0.0 }
+    ],
+    wrap: [],
+    boundary: [],
+    open: []
+};
+
 // Add object shaders to config
 wallObjects.forEach(obj => {
     if (obj.instantiateShader) {
@@ -175,7 +186,7 @@ function bindLBMTextures(gl, program, textures, wallsTexture, prevWallsTexture) 
 
 
 
-function runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture, boundaryMode) {
+function runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture, boundaryMode, boundaryModeParamsValues) {
     // LBM Step
     gl.useProgram(programs.step);
     gl.bindFramebuffer(gl.FRAMEBUFFER, writeState.fbo);
@@ -187,11 +198,21 @@ function runStep(gl, programs, readState, writeState, canvas, wallsTexture, prev
     const resLoc = gl.getUniformLocation(programs.step, "u_res");
     if (resLoc !== null) gl.uniform2f(resLoc, canvas.width, canvas.height);
     
-    // Pass boundary mode: 0 = wrap, 1 = boundary, 2 = open
-    const boundaryModeValue = boundaryMode.current === 'wrap' ? 0.0 : 
-                               boundaryMode.current === 'boundary' ? 1.0 : 2.0;
+    // Pass boundary mode: 0 = wrap, 1 = boundary, 2 = open, 3 = airflowTunnel
+    let boundaryModeValue = 0.0;
+    if (boundaryMode.current === 'wrap') boundaryModeValue = 0.0;
+    else if (boundaryMode.current === 'boundary') boundaryModeValue = 1.0;
+    else if (boundaryMode.current === 'open') boundaryModeValue = 2.0;
+    else if (boundaryMode.current === 'airflowTunnel') boundaryModeValue = 3.0;
     const boundaryModeLoc = gl.getUniformLocation(programs.step, "u_boundaryMode");
     if (boundaryModeLoc !== null) gl.uniform1f(boundaryModeLoc, boundaryModeValue);
+    
+    // Pass tunnel velocity parameter
+    const tunnelVelLoc = gl.getUniformLocation(programs.step, "u_tunnelVelocity");
+    if (tunnelVelLoc !== null) {
+        const tunnelVel = boundaryModeParamsValues.airflowTunnel?.tunnelVelocity ?? -0.1;
+        gl.uniform1f(tunnelVelLoc, tunnelVel);
+    }
     
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 }
@@ -336,8 +357,22 @@ async function main() {
     };
 
     const boundaryMode = {
-        current: 'boundary' // 'wrap', 'boundary', or 'open'
+        current: 'boundary' // 'wrap', 'boundary', 'open', or 'airflowTunnel'
     };
+
+    const boundaryModeParamsValues = {
+        airflowTunnel: {},
+        wrap: {},
+        boundary: {},
+        open: {}
+    };
+
+    // Initialize boundary mode parameters
+    Object.keys(boundaryModeParams).forEach(modeKey => {
+        boundaryModeParams[modeKey].forEach(param => {
+            boundaryModeParamsValues[modeKey][param.key] = param.value;
+        });
+    });
 
     const visualization = {
         showVelocity: false,
@@ -362,6 +397,7 @@ async function main() {
     const settings = {
         simControl,
         boundaryMode,
+        boundaryModeParamsValues,
         visualization,
         initialization,
         wallObjects
@@ -376,6 +412,9 @@ async function main() {
         }
         if (cachedSettings.boundaryMode) {
             boundaryMode.current = cachedSettings.boundaryMode;
+        }
+        if (cachedSettings.boundaryModeParamsValues) {
+            Object.assign(boundaryModeParamsValues, cachedSettings.boundaryModeParamsValues);
         }
         if (cachedSettings.visualization) {
             visualization.showVelocity = cachedSettings.visualization.showVelocity;
@@ -400,7 +439,7 @@ async function main() {
         // Sync boundary walls state based on loaded boundary mode
         const boundaryWallObj = wallObjects.find(obj => obj.id === 'boundaryWalls');
         if (boundaryWallObj) {
-            boundaryWallObj.enabled = (boundaryMode.current === 'boundary');
+            boundaryWallObj.enabled = (boundaryMode.current === 'boundary' || boundaryMode.current === 'airflowTunnel');
         }
     }
 
@@ -468,6 +507,44 @@ async function main() {
         });
 
         renderInitializationParams();
+    }
+
+    function renderBoundaryModeParams() {
+        const boundaryModeParamsContainer = document.getElementById('boundary-mode-params-container');
+        if (!boundaryModeParamsContainer) return;
+        boundaryModeParamsContainer.innerHTML = '';
+
+        const params = boundaryModeParams[boundaryMode.current] || [];
+        params.forEach(param => {
+            const row = document.createElement('div');
+            row.className = 'row';
+
+            const label = document.createElement('label');
+            label.htmlFor = `boundary-param-${param.key}`;
+            label.textContent = param.label;
+
+            const input = document.createElement('input');
+            input.id = `boundary-param-${param.key}`;
+            input.type = 'number';
+            input.step = String(param.step);
+            input.min = String(param.min);
+            input.max = String(param.max);
+            input.value = String(boundaryModeParamsValues[boundaryMode.current][param.key]);
+
+            input.addEventListener('change', () => {
+                const parsed = Number(input.value);
+                const fallback = boundaryModeParamsValues[boundaryMode.current][param.key];
+                const numeric = Number.isFinite(parsed) ? parsed : fallback;
+                const clamped = clampValue(numeric, param.min, param.max);
+                boundaryModeParamsValues[boundaryMode.current][param.key] = clamped;
+                input.value = String(clamped);
+                SettingsCache.save(settings);
+            });
+
+            row.appendChild(label);
+            row.appendChild(input);
+            boundaryModeParamsContainer.appendChild(row);
+        });
     }
 
     function setupDualSlider(minSlider, maxSlider, valueLabel, fillElement, onChange) {
@@ -577,7 +654,9 @@ async function main() {
                 const resLoc = gl.getUniformLocation(programs.wallInit, "u_res");
                 gl.uniform2f(resLoc, canvas.width, canvas.height);
                 const boundaryWallsLoc = gl.getUniformLocation(programs.wallInit, "u_enableBoundaryWalls");
-                gl.uniform1f(boundaryWallsLoc, 1.0);
+                // Pass 1.0 for full walls, 2.0 for tunnel walls (top/bottom only)
+                const wallMode = (boundaryMode.current === 'airflowTunnel') ? 2.0 : 1.0;
+                gl.uniform1f(boundaryWallsLoc, wallMode);
                 gl.drawArrays(gl.TRIANGLES, 0, 6);
             } else {
                 let programKey = null;
@@ -625,10 +704,13 @@ async function main() {
         // Update boundary wall object enabled state
         const boundaryWallObj = wallObjects.find(obj => obj.id === 'boundaryWalls');
         if (boundaryWallObj) {
-            boundaryWallObj.enabled = (mode === 'boundary');
+            boundaryWallObj.enabled = (mode === 'boundary' || mode === 'airflowTunnel');
             const checkbox = document.getElementById(`obj-${boundaryWallObj.id}`);
             if (checkbox) checkbox.checked = boundaryWallObj.enabled;
         }
+        
+        // Render boundary mode parameters UI
+        renderBoundaryModeParams();
         
         // Reset simulation to apply changes
         resetSimulation();
@@ -755,8 +837,10 @@ async function main() {
             setBoundaryMode(boundaryModeSelect.value);
             SettingsCache.save(settings);
         });
+        boundaryModeSelect.value = boundaryMode.current;
     }
 
+    renderBoundaryModeParams();
     updateUiStatus();
 
     // Init is equivalent to reset
@@ -787,7 +871,7 @@ async function main() {
                 initializeWalls(simulationIteration, true);
             }
 
-            runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture, boundaryMode);
+            runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture, boundaryMode, boundaryModeParamsValues);
 
             const temp = readState;
             readState = writeState;

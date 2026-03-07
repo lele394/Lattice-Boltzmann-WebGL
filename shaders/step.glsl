@@ -3,19 +3,50 @@ precision highp float;
 
 uniform sampler2D u_Q1Q4, u_Q5Q8, u_Q9, u_walls, u_prevWalls;
 uniform vec2 u_res;
-uniform float u_boundaryMode; // 0=wrap, 1=boundary, 2=open
+uniform float u_boundaryMode; // 0=wrap, 1=boundary, 2=open, 3=airflowTunnel
+uniform float u_tunnelVelocity;
 in vec2 v_uv;
 
 layout(location = 0) out vec4 out_Q1Q4;
 layout(location = 1) out vec4 out_Q5Q8;
 layout(location = 2) out float out_Q9;
 
-// For open boundaries: equilibrium with density=1, velocity=0
-float equilibriumPop(int dir) {
+// For open boundaries and airflow tunnel: equilibrium population calculation with velocity
+float equilibriumPop(int dir, float u, float v) {
     float rho0 = 1.0;
-    if (dir == 0) return (4.0/9.0) * rho0;
-    if (dir == 1 || dir == 2 || dir == 3 || dir == 4) return (1.0/9.0) * rho0;
-    return (1.0/36.0) * rho0; // diagonal directions
+    float uu = u*u + v*v;
+    
+    if (dir == 0) {
+        return (4.0/9.0) * rho0 * (1.0 - 1.5 * uu);
+    } else if (dir == 1) {
+        // E direction: e = (+1, 0), e·u = u
+        return (1.0/9.0) * rho0 * (1.0 + 3.0*u + 4.5*u*u - 1.5*uu);
+    } else if (dir == 3) {
+        // W direction: e = (-1, 0), e·u = -u
+        return (1.0/9.0) * rho0 * (1.0 - 3.0*u + 4.5*u*u - 1.5*uu);
+    } else if (dir == 2) {
+        // N direction: e = (0, +1), e·u = v
+        return (1.0/9.0) * rho0 * (1.0 + 3.0*v + 4.5*v*v - 1.5*uu);
+    } else if (dir == 4) {
+        // S direction: e = (0, -1), e·u = -v
+        return (1.0/9.0) * rho0 * (1.0 - 3.0*v + 4.5*v*v - 1.5*uu);
+    } else if (dir == 5) {
+        // NE diagonal: e = (+1, +1), e·u = u + v
+        float eu = u + v;
+        return (1.0/36.0) * rho0 * (1.0 + 3.0*eu + 4.5*eu*eu - 1.5*uu);
+    } else if (dir == 6) {
+        // NW diagonal: e = (-1, +1), e·u = -u + v
+        float eu = -u + v;
+        return (1.0/36.0) * rho0 * (1.0 + 3.0*eu + 4.5*eu*eu - 1.5*uu);
+    } else if (dir == 7) {
+        // SW diagonal: e = (-1, -1), e·u = -u - v
+        float eu = -u - v;
+        return (1.0/36.0) * rho0 * (1.0 + 3.0*eu + 4.5*eu*eu - 1.5*uu);
+    } else {
+        // SE diagonal (dir == 8): e = (+1, -1), e·u = u - v
+        float eu = u - v;
+        return (1.0/36.0) * rho0 * (1.0 + 3.0*eu + 4.5*eu*eu - 1.5*uu);
+    }
 }
 
 void main() {
@@ -41,36 +72,69 @@ void main() {
     // For open boundaries:
     //   - Incoming: Cells pull from outside -> use equilibrium (rho=1, u=0)
     //   - Outgoing: Populations streaming out aren't pulled by anyone -> destroyed
-    bool isOpenMode = u_boundaryMode > 1.5;
+    // For airflow tunnel:
+    //   - Right edge: inject leftward velocity (inflow)
+    //   - Left edge: open outflow
+    //   - Top/bottom: walls (handled by wall texture)
+    bool isOpenMode = u_boundaryMode > 1.5 && u_boundaryMode < 2.5;  // Only 'open' mode
+    bool isAirflowTunnel = u_boundaryMode > 2.9 && u_boundaryMode < 3.1;
     
     vec2 uv0 = v_uv;
-    vec2 uv1 = v_uv + vec2(-px.x,  0.0);
-    vec2 uv2 = v_uv + vec2( 0.0, -px.y);
-    vec2 uv3 = v_uv + vec2( px.x,  0.0);
-    vec2 uv4 = v_uv + vec2( 0.0,  px.y);
-    vec2 uv5 = v_uv + vec2(-px.x, -px.y);
-    vec2 uv6 = v_uv + vec2( px.x, -px.y);
-    vec2 uv7 = v_uv + vec2( px.x,  px.y);
-    vec2 uv8 = v_uv + vec2(-px.x,  px.y);
+    vec2 uv1 = v_uv + vec2(-px.x,  0.0);  // Pull E from W
+    vec2 uv2 = v_uv + vec2( 0.0, -px.y);  // Pull N from S
+    vec2 uv3 = v_uv + vec2( px.x,  0.0);  // Pull W from E
+    vec2 uv4 = v_uv + vec2( 0.0,  px.y);  // Pull S from N
+    vec2 uv5 = v_uv + vec2(-px.x, -px.y); // Pull NE from SW
+    vec2 uv6 = v_uv + vec2( px.x, -px.y); // Pull NW from SE
+    vec2 uv7 = v_uv + vec2( px.x,  px.y); // Pull SW from NE
+    vec2 uv8 = v_uv + vec2(-px.x,  px.y); // Pull SE from NW
     
-    bool out1 = isOpenMode && (uv1.x <= 0.0 || uv1.x >= 1.0 || uv1.y <= 0.0 || uv1.y >= 1.0);
-    bool out2 = isOpenMode && (uv2.x <= 0.0 || uv2.x >= 1.0 || uv2.y <= 0.0 || uv2.y >= 1.0);
-    bool out3 = isOpenMode && (uv3.x <= 0.0 || uv3.x >= 1.0 || uv3.y <= 0.0 || uv3.y >= 1.0);
-    bool out4 = isOpenMode && (uv4.x <= 0.0 || uv4.x >= 1.0 || uv4.y <= 0.0 || uv4.y >= 1.0);
-    bool out5 = isOpenMode && (uv5.x <= 0.0 || uv5.x >= 1.0 || uv5.y <= 0.0 || uv5.y >= 1.0);
-    bool out6 = isOpenMode && (uv6.x <= 0.0 || uv6.x >= 1.0 || uv6.y <= 0.0 || uv6.y >= 1.0);
-    bool out7 = isOpenMode && (uv7.x <= 0.0 || uv7.x >= 1.0 || uv7.y <= 0.0 || uv7.y >= 1.0);
-    bool out8 = isOpenMode && (uv8.x <= 0.0 || uv8.x >= 1.0 || uv8.y <= 0.0 || uv8.y >= 1.0);
+    // For standard open mode: all boundaries are open
+    // For airflow tunnel: only left/right are open, top/bottom are walls
+    bool out1, out2, out3, out4, out5, out6, out7, out8;
+    
+    if (isAirflowTunnel) {
+        // Airflow tunnel: left/right open, top/bottom closed (walls)
+        out1 = (uv1.x <= 0.0 || uv1.x >= 1.0);
+        out2 = false;  // Top/bottom handled by walls
+        out3 = (uv3.x <= 0.0 || uv3.x >= 1.0);
+        out4 = false;  // Top/bottom handled by walls
+        out5 = (uv5.x <= 0.0 || uv5.x >= 1.0);
+        out6 = (uv6.x <= 0.0 || uv6.x >= 1.0);
+        out7 = (uv7.x <= 0.0 || uv7.x >= 1.0);
+        out8 = (uv8.x <= 0.0 || uv8.x >= 1.0);
+    } else {
+        // Open mode: all boundaries open
+        out1 = isOpenMode && (uv1.x <= 0.0 || uv1.x >= 1.0 || uv1.y <= 0.0 || uv1.y >= 1.0);
+        out2 = isOpenMode && (uv2.x <= 0.0 || uv2.x >= 1.0 || uv2.y <= 0.0 || uv2.y >= 1.0);
+        out3 = isOpenMode && (uv3.x <= 0.0 || uv3.x >= 1.0 || uv3.y <= 0.0 || uv3.y >= 1.0);
+        out4 = isOpenMode && (uv4.x <= 0.0 || uv4.x >= 1.0 || uv4.y <= 0.0 || uv4.y >= 1.0);
+        out5 = isOpenMode && (uv5.x <= 0.0 || uv5.x >= 1.0 || uv5.y <= 0.0 || uv5.y >= 1.0);
+        out6 = isOpenMode && (uv6.x <= 0.0 || uv6.x >= 1.0 || uv6.y <= 0.0 || uv6.y >= 1.0);
+        out7 = isOpenMode && (uv7.x <= 0.0 || uv7.x >= 1.0 || uv7.y <= 0.0 || uv7.y >= 1.0);
+        out8 = isOpenMode && (uv8.x <= 0.0 || uv8.x >= 1.0 || uv8.y <= 0.0 || uv8.y >= 1.0);
+    }
+    
+    // For airflow tunnel: inject velocity when pulling from RIGHT boundary (x >= 1.0)
+    // Directions pulling from right (uv.x >= 1.0): 3 (W), 6 (NW), 7 (SW)
+    float u_eq1 = 0.0;
+    float u_eq2 = 0.0;
+    float u_eq3 = (isAirflowTunnel && uv3.x >= 1.0) ? u_tunnelVelocity : 0.0;  // Pull W from right edge
+    float u_eq4 = 0.0;
+    float u_eq5 = 0.0;
+    float u_eq6 = (isAirflowTunnel && uv6.x >= 1.0) ? u_tunnelVelocity : 0.0;  // Pull NW from right edge
+    float u_eq7 = (isAirflowTunnel && uv7.x >= 1.0) ? u_tunnelVelocity : 0.0;  // Pull SW from right edge
+    float u_eq8 = 0.0;
     
     float f0 = texture(u_Q9,   uv0).r;
-    float f1 = out1 ? equilibriumPop(1) : texture(u_Q1Q4, uv1).r;
-    float f2 = out2 ? equilibriumPop(2) : texture(u_Q1Q4, uv2).g;
-    float f3 = out3 ? equilibriumPop(3) : texture(u_Q1Q4, uv3).b;
-    float f4 = out4 ? equilibriumPop(4) : texture(u_Q1Q4, uv4).a;
-    float f5 = out5 ? equilibriumPop(5) : texture(u_Q5Q8, uv5).r;
-    float f6 = out6 ? equilibriumPop(6) : texture(u_Q5Q8, uv6).g;
-    float f7 = out7 ? equilibriumPop(7) : texture(u_Q5Q8, uv7).b;
-    float f8 = out8 ? equilibriumPop(8) : texture(u_Q5Q8, uv8).a;
+    float f1 = out1 ? equilibriumPop(1, u_eq1, 0.0) : texture(u_Q1Q4, uv1).r;
+    float f2 = out2 ? equilibriumPop(2, u_eq2, 0.0) : texture(u_Q1Q4, uv2).g;
+    float f3 = out3 ? equilibriumPop(3, u_eq3, 0.0) : texture(u_Q1Q4, uv3).b;
+    float f4 = out4 ? equilibriumPop(4, u_eq4, 0.0) : texture(u_Q1Q4, uv4).a;
+    float f5 = out5 ? equilibriumPop(5, u_eq5, 0.0) : texture(u_Q5Q8, uv5).r;
+    float f6 = out6 ? equilibriumPop(6, u_eq6, 0.0) : texture(u_Q5Q8, uv6).g;
+    float f7 = out7 ? equilibriumPop(7, u_eq7, 0.0) : texture(u_Q5Q8, uv7).b;
+    float f8 = out8 ? equilibriumPop(8, u_eq8, 0.0) : texture(u_Q5Q8, uv8).a;
 
     vec4 wallData = texture(u_walls, v_uv);
     vec4 prevWallData = texture(u_prevWalls, v_uv);
