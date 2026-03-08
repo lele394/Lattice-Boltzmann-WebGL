@@ -41,3 +41,19 @@ WebGL cuz I wanna play with it online
 - for the tunnel and open system boundaries (Zou/He boundaries) : [Implementation of on-site velocity boundary conditions for D3Q19 lattice Boltzmann](https://arxiv.org/abs/0811.4593)
 
 - Insane paper : [On single distribution lattice Boltzmann schemes for the approximation of Navier Stokes equations](https://arxiv.org/html/2206.13261v4)
+
+
+### Features
+
+- WebGL-based D2Q9 Lattice-Boltzmann fluid simulation
+- Real-time visualization with density and velocity field rendering
+- Multiple boundary conditions: Wrap Around, Boundary Walls, Open System, Airflow Tunnel
+- MRT (Multiple Relaxation Time) collision operator with adjustable relaxation spectrum
+- Interactive wall objects: Circle, Rectangle, Triangle, Aerospike, Four Circles, Moving Vertical Bar, Custom Bitmap
+- Two initialization modes: Ink Drop and Uniform density
+- Adjustable visualization parameters: color range calibration, power stretch, zone of interest selection
+- Hover info display with D2Q9 distribution values at cursor position
+- Video recording support (WebM and GIF formats)
+- Configurable canvas dimensions and simulation step rate
+- Settings persistence using browser local storage
+- Collapsible control panel with real-time parameter adjustment
