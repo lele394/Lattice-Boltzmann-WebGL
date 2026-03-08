@@ -35,6 +35,7 @@ uniform vec2 u_res;
 uniform float u_visualizationMode;
 uniform vec2 u_densityRange;
 uniform vec2 u_velocityRange;
+uniform float u_powerStretch;
 
 in vec2 v_uv;
 out vec4 outColor;
@@ -111,6 +112,7 @@ void main() {
     float velocityT = normalizeInRange(speed, u_velocityRange);
     float useVelocity = step(0.5, u_visualizationMode);
     float t = mix(densityT, velocityT, useVelocity);
+    t = pow(clamp(t, 0.0, 1.0), max(u_powerStretch, 0.01));
 
     outColor = vec4(gist_ncar(t), 1.0);
 }

@@ -84,7 +84,8 @@ const SettingsCache = {
                     velocityMin: settings.visualization.velocityMin,
                     velocityMax: settings.visualization.velocityMax,
                     showHoverInfo: settings.visualization.showHoverInfo,
-                    autoCalibrateEachFrame: settings.visualization.autoCalibrateEachFrame
+                    autoCalibrateEachFrame: settings.visualization.autoCalibrateEachFrame,
+                    powerStretch: settings.visualization.powerStretch
                 },
                 mrtRelaxation: {
                     values: settings.mrtRelaxation.values
@@ -409,6 +410,9 @@ function drawDisplay(gl, programs, stateToDisplay, canvas, wallsTexture, visuali
     const velocityRangeLoc = gl.getUniformLocation(programs.display, "u_velocityRange");
     if (velocityRangeLoc !== null) gl.uniform2f(velocityRangeLoc, visualization.velocityMin, visualization.velocityMax);
 
+    const powerStretchLoc = gl.getUniformLocation(programs.display, "u_powerStretch");
+    if (powerStretchLoc !== null) gl.uniform1f(powerStretchLoc, visualization.powerStretch);
+
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 }
 
@@ -538,6 +542,9 @@ async function main() {
     const velocityMaxSlider = document.getElementById('velocity-max-slider');
     const velocityRangeFill = document.getElementById('velocity-range-fill');
     const velocityRangeValue = document.getElementById('velocity-range-value');
+    const powerStretchSlider = document.getElementById('power-stretch-slider');
+    const powerStretchValue = document.getElementById('power-stretch-value');
+    const powerStretchInput = document.getElementById('power-stretch-input');
     const boundaryModeSelect = document.getElementById('boundary-mode-select');
     const simStatus = document.getElementById('sim-status');
     const canvasWidthInput = document.getElementById('canvas-width-input');
@@ -631,7 +638,8 @@ async function main() {
         velocityMin: 0.0,
         velocityMax: 0.3,
         showHoverInfo: true,
-        autoCalibrateEachFrame: false
+        autoCalibrateEachFrame: false,
+        powerStretch: 1.0
     };
 
     const zoneOfInterest = {
@@ -724,6 +732,10 @@ async function main() {
             }
             if (cachedSettings.visualization.autoCalibrateEachFrame !== undefined) {
                 visualization.autoCalibrateEachFrame = cachedSettings.visualization.autoCalibrateEachFrame;
+            }
+            if (cachedSettings.visualization.powerStretch !== undefined) {
+                const parsedPowerStretch = Number(cachedSettings.visualization.powerStretch);
+                visualization.powerStretch = clampValue(parsedPowerStretch, 0.01, 10.0);
             }
         }
         if (cachedSettings.mrtRelaxation) {
@@ -1285,6 +1297,18 @@ async function main() {
         }
     }
 
+    function updatePowerStretchUi() {
+        if (powerStretchSlider) {
+            powerStretchSlider.value = String(visualization.powerStretch);
+        }
+        if (powerStretchValue) {
+            powerStretchValue.textContent = visualization.powerStretch.toFixed(CONFIG.RANGE_SLIDER_DECIMAL_PLACES);
+        }
+        if (powerStretchInput) {
+            powerStretchInput.value = visualization.powerStretch.toFixed(CONFIG.RANGE_SLIDER_DECIMAL_PLACES);
+        }
+    }
+
     function autoCalibrateVisualizationRange() {
         if (!readState || !readState.fbo) return false;
 
@@ -1825,6 +1849,8 @@ async function main() {
             autoCalibrateLiveToggle.checked = visualization.autoCalibrateEachFrame;
         }
 
+        updatePowerStretchUi();
+
         // Sync simple object select
         const simpleObjectSelect = document.getElementById('simple-object-select');
         if (simpleObjectSelect) {
@@ -1872,6 +1898,39 @@ async function main() {
         autoCalibrateLiveToggle.addEventListener('change', () => {
             visualization.autoCalibrateEachFrame = autoCalibrateLiveToggle.checked;
             SettingsCache.save(settings);
+        });
+    }
+
+    if (powerStretchSlider) {
+        updatePowerStretchUi();
+        powerStretchSlider.addEventListener('input', () => {
+            const parsed = Number(powerStretchSlider.value);
+            visualization.powerStretch = clampValue(parsed, 0.01, 10.0);
+            updatePowerStretchUi();
+            SettingsCache.save(settings);
+        });
+    }
+
+    if (powerStretchInput) {
+        powerStretchInput.addEventListener('change', () => {
+            const parsed = Number(powerStretchInput.value);
+            const fallback = visualization.powerStretch;
+            const numeric = Number.isFinite(parsed) ? parsed : fallback;
+            visualization.powerStretch = clampValue(numeric, 0.01, 10.0);
+            updatePowerStretchUi();
+            SettingsCache.save(settings);
+        });
+
+        powerStretchInput.addEventListener('input', () => {
+            const parsed = Number(powerStretchInput.value);
+            if (!Number.isFinite(parsed)) return;
+            const clamped = clampValue(parsed, 0.01, 10.0);
+            if (powerStretchSlider) {
+                powerStretchSlider.value = String(clamped);
+            }
+            if (powerStretchValue) {
+                powerStretchValue.textContent = clamped.toFixed(CONFIG.RANGE_SLIDER_DECIMAL_PLACES);
+            }
         });
     }
 
