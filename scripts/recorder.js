@@ -7,11 +7,9 @@ export class SimulationRecorder {
     constructor(canvas) {
         this.canvas = canvas;
         this.isRecording = false;
+        this.isPaused = false;
         this.format = 'webm'; // 'webm', 'gif'
-        this.recordInterval = 1; // Record every N frames
-        this.frameCount = 0;
         this.recordedFrameCount = 0;
-        this.stepCounter = 0;
         
         // Video recording
         this.mediaRecorder = null;
@@ -30,20 +28,17 @@ export class SimulationRecorder {
     /**
      * Start recording with the specified format
      * @param {string} format - 'webm' or 'gif'
-     * @param {number} recordInterval - Record every N steps
      */
-    async startRecording(format = 'webm', recordInterval = 1) {
+    async startRecording(format = 'webm') {
         if (this.isRecording) {
             console.warn('Already recording');
             return;
         }
         
         this.format = format;
-        this.recordInterval = recordInterval;
-        this.frameCount = 0;
         this.recordedFrameCount = 0;
-        this.stepCounter = 0;
         this.isRecording = true;
+        this.isPaused = false;
         
         if (format === 'webm' || format === 'mp4') {
             await this.startVideoRecording();
@@ -51,7 +46,7 @@ export class SimulationRecorder {
             await this.startGifRecording();
         }
         
-        console.log(`Started ${format.toUpperCase()} recording (every ${recordInterval} step${recordInterval !== 1 ? 's' : ''})`);
+        console.log(`Started ${format.toUpperCase()} recording`);
     }
     
     /**
@@ -122,18 +117,35 @@ export class SimulationRecorder {
     }
     
     /**
+     * Pause recording (for when simulation is paused)
+     */
+    pauseRecording() {
+        if (!this.isRecording || this.isPaused) return;
+        
+        if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+            this.mediaRecorder.pause();
+            this.isPaused = true;
+        }
+    }
+    
+    /**
+     * Resume recording (for when simulation resumes)
+     */
+    resumeRecording() {
+        if (!this.isRecording || !this.isPaused) return;
+        
+        if (this.mediaRecorder && this.mediaRecorder.state === 'paused') {
+            this.mediaRecorder.resume();
+            this.isPaused = false;
+        }
+    }
+    
+    /**
      * Capture the current frame
-     * Should be called after each simulation step
+     * Should be called after each simulation step when running
      */
     captureFrame() {
-        if (!this.isRecording) return;
-        
-        this.stepCounter++;
-        
-        // Only capture every N steps
-        if (this.stepCounter % this.recordInterval !== 0) {
-            return;
-        }
+        if (!this.isRecording || this.isPaused) return;
         
         this.recordedFrameCount++;
         
@@ -161,9 +173,8 @@ export class SimulationRecorder {
         const ctx = tempCanvas.getContext('2d');
         ctx.drawImage(this.canvas, 0, 0);
         
-        // Add frame to GIF encoder with delay (ms per frame)
-        // Calculate delay based on record interval
-        const delayMs = 33 * this.recordInterval; // ~30fps base, adjusted by interval
+        // Add frame to GIF encoder with ~30fps delay
+        const delayMs = 33;
         this.gifEncoder.addFrame(ctx, { copy: true, delay: delayMs });
     }
     

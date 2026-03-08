@@ -378,6 +378,11 @@ what I wanted was a simple control panel, I just let it do its thing.
         justify-content: space-between;
         gap: 8px;
         margin-bottom: 4px;
+        min-width: 0;
+    }
+
+    #sim-controls .slider-header > label {
+        min-width: 0;
     }
 
     #sim-controls .slider-value {
@@ -385,6 +390,25 @@ what I wanted was a simple control panel, I just let it do its thing.
         opacity: 0.9;
         min-width: 90px;
         text-align: right;
+    }
+
+    #power-stretch-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        flex: 1;
+        justify-content: flex-end;
+    }
+
+    #power-stretch-controls #power-stretch-value {
+        min-width: 0;
+        flex: 1;
+    }
+
+    #power-stretch-controls #power-stretch-input {
+        width: 68px !important;
+        flex: 0 0 68px;
     }
 
     #sim-controls .dual-slider {
@@ -633,9 +657,9 @@ what I wanted was a simple control panel, I just let it do its thing.
                 <div class="slider-block" style="margin-bottom: 12px;">
                     <div class="slider-header">
                         <label for="power-stretch-slider">Power Stretch</label>
-                        <div style="display: flex; align-items: center; gap: 8px;">
+                        <div id="power-stretch-controls">
                             <span id="power-stretch-value" class="slider-value"></span>
-                            <input id="power-stretch-input" type="number" min="0.01" max="10" step="0.01" value="1.0" style="width: 72px; text-align: center;">
+                            <input id="power-stretch-input" type="number" min="0.01" max="10" step="0.01" value="1.0" style="text-align: center;">
                         </div>
                     </div>
                     <input id="power-stretch-slider" type="range" min="0.01" max="10" step="0.01" value="1.0" style="width: 100%;">
@@ -680,11 +704,6 @@ what I wanted was a simple control panel, I just let it do its thing.
 
                 <!-- Recording Section -->
                 <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
-                    <div class="row">
-                        <label for="record-interval-input">Every N Steps</label>
-                        <input id="record-interval-input" type="number" min="1" max="100" value="1">
-                    </div>
-
                     <div class="button-group" style="margin-bottom: 8px;">
                         <button id="record-toggle-btn" type="button">Start Recording</button>
                         <button id="record-download-btn" type="button" disabled>Download</button>

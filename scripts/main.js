@@ -556,7 +556,6 @@ async function main() {
     const controlsGithubLink = document.getElementById('controls-github-link');
     const recordToggleBtn = document.getElementById('record-toggle-btn');
     const recordDownloadBtn = document.getElementById('record-download-btn');
-    const recordIntervalInput = document.getElementById('record-interval-input');
     const recordingStatus = document.getElementById('recording-status');
     const hoverInfoToggle = document.getElementById('hover-info-toggle');
     const hoverInfoDiv = document.getElementById('hover-info');
@@ -1704,7 +1703,6 @@ async function main() {
             if (!recorder.isRecording) {
                 // Start recording
                 const format = 'webm';
-                const interval = Number(recordIntervalInput?.value) || 1;
                 
                 if (!SimulationRecorder.isSupported()) {
                     alert('Recording is not supported in this browser.');
@@ -1714,7 +1712,7 @@ async function main() {
                 recordedBlob = null;
                 if (recordDownloadBtn) recordDownloadBtn.disabled = true;
                 
-                await recorder.startRecording(format, interval);
+                await recorder.startRecording(format);
                 
                 recordToggleBtn.textContent = 'Stop Recording';
                 recordToggleBtn.style.background = '#c92a2a';
@@ -2500,9 +2498,14 @@ async function main() {
 
         drawDisplay(gl, programs, readState, canvas, wallsTexture, visualization);
         
-        // Capture frame for recording if active and simulation is playing
-        if (recorder.isRecording && simControl.isPlaying && stepsThisFrame > 0) {
-            recorder.captureFrame();
+        // Control recording based on simulation state
+        if (recorder.isRecording) {
+            if (simControl.isPlaying && stepsThisFrame > 0) {
+                recorder.resumeRecording();
+                recorder.captureFrame();
+            } else {
+                recorder.pauseRecording();
+            }
         }
         
         updateVelocityDisplay();
