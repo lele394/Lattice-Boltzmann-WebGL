@@ -39,3 +39,5 @@ WebGL cuz I wanna play with it online
 - Gábor Závodszky's [medFlow2 Lattice-Boltzmann code](https://github.com/gzavo/medFlow2D/blob/master/src/lbm/lb.c)
 
 - for the tunnel and open system boundaries (Zou/He boundaries) : [Implementation of on-site velocity boundary conditions for D3Q19 lattice Boltzmann](https://arxiv.org/abs/0811.4593)
+
+- Insane paper : [On single distribution lattice Boltzmann schemes for the approximation of Navier Stokes equations](https://arxiv.org/html/2206.13261v4)
