@@ -10,7 +10,7 @@ import { SimulationRecorder } from './recorder.js';
 // ============================================================================
 const CONFIG = {
     // Simulation Physics
-    AIRFLOW_RAMP_RATE: 0.00002,          // Maximum velocity change per step for airflow ramp-up
+    AIRFLOW_RAMP_RATE: 0.002,          // Maximum velocity change per step for airflow ramp-up
     MAX_STEPS_PER_FRAME: 20,              // Maximum simulation steps to execute per render frame
     
     // Canvas Dimensions
@@ -197,6 +197,21 @@ const simpleObjects = [
             { key: 'centerY', label: 'Y Position', uniform: 'u_centerY', value: 0.5, step: 0.01, min: 0.0, max: 1.0 },
             { key: 'scale', label: 'Scale', uniform: 'u_scale', value: 1.0, step: 0.01, min: 0.01, max: 4.0 },
             { key: 'rotation', label: 'Rotation (deg)', uniform: 'u_rotation', value: 0, step: 1, min: -360, max: 360, isAngle: true }
+        ]
+    },
+    {
+        id: 'aerospike',
+        name: 'Aerospike Nozzle',
+        shader: 'shaders/objects/aerospike.frag',
+        params: [
+            { key: 'centerX', label: 'X Position', uniform: 'u_centerX', value: 0.25, step: 0.01, min: 0.0, max: 1.0 },
+            { key: 'centerY', label: 'Y Position', uniform: 'u_centerY', value: 0.5, step: 0.01, min: 0.0, max: 1.0 },
+            { key: 'throatRadius', label: 'Throat Radius', uniform: 'u_throatRadius', value: 0.08, step: 0.005, min: 0.02, max: 0.2 },
+            { key: 'spikeLength', label: 'Spike Length', uniform: 'u_spikeLength', value: 0.35, step: 0.01, min: 0.1, max: 0.6 },
+            { key: 'convergingLength', label: 'Converging Length', uniform: 'u_convergingLength', value: 0.15, step: 0.01, min: 0.05, max: 0.4 },
+            { key: 'inletRadius', label: 'Inlet Radius', uniform: 'u_inletRadius', value: 0.15, step: 0.005, min: 0.05, max: 0.3 },
+            { key: 'wallThickness', label: 'Wall Thickness', uniform: 'u_wallThickness', value: 0.02, step: 0.005, min: 0.005, max: 0.1 },
+            { key: 'truncationRatio', label: 'Truncation Ratio', uniform: 'u_truncationRatio', value: 0.2, step: 0.05, min: 0.0, max: 0.8 }
         ]
     }
 ];

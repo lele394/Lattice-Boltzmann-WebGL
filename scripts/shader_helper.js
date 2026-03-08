@@ -36,11 +36,18 @@ export async function shadersCompiler(gl, shaderConfig) {
     // 3. Helper: Link VS and FS into a Program
     const createProgram = (vsSrc, fsSrc) => {
         const program = gl.createProgram();
-        gl.attachShader(program, createShader(gl.VERTEX_SHADER, vsSrc));
-        gl.attachShader(program, createShader(gl.FRAGMENT_SHADER, fsSrc));
+        const vs = createShader(gl.VERTEX_SHADER, vsSrc);
+        const fs = createShader(gl.FRAGMENT_SHADER, fsSrc);
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
         gl.linkProgram(program);
         if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-            throw new Error(`Program link error: ${gl.getProgramInfoLog(program)}`);
+            const linkLog = gl.getProgramInfoLog(program);
+            console.error('Program link failed:');
+            console.error('Link log:', linkLog);
+            console.error('Vertex shader source:', vsSrc.substring(0, 200));
+            console.error('Fragment shader source:', fsSrc.substring(0, 500));
+            throw new Error(`Program link error: ${linkLog}`);
         }
         return program;
     };
