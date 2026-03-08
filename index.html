@@ -521,6 +521,16 @@ what I wanted was a simple control panel, I just let it do its thing.
         height: 180px;
     }
 
+    #zone-of-interest-box {
+        position: fixed;
+        pointer-events: none;
+        z-index: 90;
+        border: 2px dashed rgba(159, 179, 255, 0.95);
+        background: rgba(159, 179, 255, 0.14);
+        box-sizing: border-box;
+        display: none;
+    }
+
     /* Responsive: single column for smaller viewports */
     @media (max-height: 800px) {
         #controls-content {
@@ -539,6 +549,7 @@ what I wanted was a simple control panel, I just let it do its thing.
     
 
     <canvas id="lbm-canvas" width="800" height="300"></canvas>
+    <div id="zone-of-interest-box"></div>
 
     <div id="hover-info" style="display: none;">
         <canvas id="d2q9-canvas" width="360" height="360"></canvas>
@@ -604,6 +615,14 @@ what I wanted was a simple control panel, I just let it do its thing.
                 <div class="button-group" style="margin-bottom: 12px;">
                     <button id="viz-density-btn" type="button" class="viz-toggle">Density</button>
                     <button id="viz-velocity-btn" type="button" class="viz-toggle active">Velocity</button>
+                </div>
+                <div class="row" style="margin-bottom: 12px;">
+                    <button id="auto-calibrate-btn" type="button" style="flex: 1;">Auto Calibrate</button>
+                    <input id="auto-calibrate-live-toggle" type="checkbox">
+                    <label for="auto-calibrate-live-toggle" style="margin: 0; white-space: nowrap;">Every Frame</label>
+                </div>
+                <div class="button-group" style="margin-bottom: 12px;">
+                    <button id="zone-of-interest-btn" type="button" class="viz-toggle">Zone of Interest</button>
                 </div>
 
                 <div id="density-range-block" class="slider-block" style="display: none;">

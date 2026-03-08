@@ -337,11 +337,12 @@ void main() {
     // Diagnostic clamp
     // If this fails, all hell breaks loose.
     // it does look cool tho
-    for(int i=0;i<9;i++){
-        if(isinf(fnr[i]) || isnan(fnr[i])){
-            fnr[i] = 0.0;
-        }
-    }
+    // DISABLED FOR NOW
+    // for(int i=0;i<9;i++){
+    //     if(isinf(fnr[i]) || isnan(fnr[i])){
+    //         fnr[i] = 0.0;
+    //     }
+    // }
     
     // Reorder back to our population ordering. Really necessary?
     // float fn[9];

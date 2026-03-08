@@ -83,7 +83,8 @@ const SettingsCache = {
                     densityMax: settings.visualization.densityMax,
                     velocityMin: settings.visualization.velocityMin,
                     velocityMax: settings.visualization.velocityMax,
-                    showHoverInfo: settings.visualization.showHoverInfo
+                    showHoverInfo: settings.visualization.showHoverInfo,
+                    autoCalibrateEachFrame: settings.visualization.autoCalibrateEachFrame
                 },
                 mrtRelaxation: {
                     values: settings.mrtRelaxation.values
@@ -523,6 +524,10 @@ async function main() {
     const mrtParamsContainer = document.getElementById('mrt-params-container');
     const vizDensityBtn = document.getElementById('viz-density-btn');
     const vizVelocityBtn = document.getElementById('viz-velocity-btn');
+    const autoCalibrateBtn = document.getElementById('auto-calibrate-btn');
+    const autoCalibrateLiveToggle = document.getElementById('auto-calibrate-live-toggle');
+    const zoneOfInterestBtn = document.getElementById('zone-of-interest-btn');
+    const zoneOfInterestBox = document.getElementById('zone-of-interest-box');
     const densityRangeBlock = document.getElementById('density-range-block');
     const velocityRangeBlock = document.getElementById('velocity-range-block');
     const densityMinSlider = document.getElementById('density-min-slider');
@@ -625,7 +630,14 @@ async function main() {
         densityMax: 1.6,
         velocityMin: 0.0,
         velocityMax: 0.3,
-        showHoverInfo: true
+        showHoverInfo: true,
+        autoCalibrateEachFrame: false
+    };
+
+    const zoneOfInterest = {
+        isSelecting: false,
+        dragStart: null,
+        bounds: null
     };
 
     const mrtRelaxation = {
@@ -709,6 +721,9 @@ async function main() {
             visualization.velocityMax = cachedSettings.visualization.velocityMax;
             if (cachedSettings.visualization.showHoverInfo !== undefined) {
                 visualization.showHoverInfo = cachedSettings.visualization.showHoverInfo;
+            }
+            if (cachedSettings.visualization.autoCalibrateEachFrame !== undefined) {
+                visualization.autoCalibrateEachFrame = cachedSettings.visualization.autoCalibrateEachFrame;
             }
         }
         if (cachedSettings.mrtRelaxation) {
@@ -1207,6 +1222,173 @@ async function main() {
         updateFromSliders(true);
     }
 
+    function applyAutoCalibratedSliderRange(minSlider, maxSlider, valueMin, valueMax) {
+        if (!minSlider || !maxSlider) return;
+        if (!Number.isFinite(valueMin) || !Number.isFinite(valueMax)) return;
+
+        const lower = Math.min(valueMin, valueMax);
+        const upper = Math.max(valueMin, valueMax);
+        const sliderMin = Number(minSlider.min);
+        const sliderMax = Number(minSlider.max);
+        const clampedLower = Math.min(Math.max(lower, sliderMin), sliderMax);
+        const clampedUpper = Math.min(Math.max(upper, sliderMin), sliderMax);
+
+        minSlider.value = String(Math.min(clampedLower, clampedUpper));
+        maxSlider.value = String(Math.max(clampedLower, clampedUpper));
+
+        minSlider.dispatchEvent(new Event('input', { bubbles: true }));
+        maxSlider.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function getCanvasPointFromMouseEvent(e) {
+        const rect = canvas.getBoundingClientRect();
+        const x = Math.floor((e.clientX - rect.left) * (canvas.width / rect.width));
+        const y = Math.floor((e.clientY - rect.top) * (canvas.height / rect.height));
+        return {
+            x: Math.max(0, Math.min(canvas.width - 1, x)),
+            y: Math.max(0, Math.min(canvas.height - 1, y))
+        };
+    }
+
+    function buildBoundsFromCorners(a, b) {
+        return {
+            xMin: Math.min(a.x, b.x),
+            xMax: Math.max(a.x, b.x),
+            yMin: Math.min(a.y, b.y),
+            yMax: Math.max(a.y, b.y)
+        };
+    }
+
+    function renderZoneOfInterestOverlay(bounds) {
+        if (!zoneOfInterestBox || !bounds) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = rect.width / canvas.width;
+        const scaleY = rect.height / canvas.height;
+
+        zoneOfInterestBox.style.left = `${rect.left + bounds.xMin * scaleX}px`;
+        zoneOfInterestBox.style.top = `${rect.top + bounds.yMin * scaleY}px`;
+        zoneOfInterestBox.style.width = `${Math.max(1, (bounds.xMax - bounds.xMin + 1) * scaleX)}px`;
+        zoneOfInterestBox.style.height = `${Math.max(1, (bounds.yMax - bounds.yMin + 1) * scaleY)}px`;
+        zoneOfInterestBox.style.display = 'block';
+    }
+
+    function updateZoneOfInterestUi() {
+        if (zoneOfInterestBtn) {
+            zoneOfInterestBtn.classList.toggle('active', zoneOfInterest.isSelecting);
+        }
+
+        if (zoneOfInterest.bounds) {
+            renderZoneOfInterestOverlay(zoneOfInterest.bounds);
+        } else if (zoneOfInterestBox) {
+            zoneOfInterestBox.style.display = 'none';
+        }
+    }
+
+    function autoCalibrateVisualizationRange() {
+        if (!readState || !readState.fbo) return false;
+
+        const width = canvas.width;
+        const height = canvas.height;
+        const pixelCount = width * height;
+        if (pixelCount <= 0) return false;
+
+        const q1q4Data = new Float32Array(pixelCount * 4);
+        const q5q8Data = new Float32Array(pixelCount * 4);
+        const q9Data = new Float32Array(pixelCount);
+        const wallData = new Float32Array(pixelCount * 4);
+
+        const prevFramebuffer = gl.getParameter(gl.FRAMEBUFFER_BINDING);
+        const prevReadBuffer = gl.getParameter(gl.READ_BUFFER);
+
+        try {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, readState.fbo);
+
+            gl.readBuffer(gl.COLOR_ATTACHMENT0);
+            gl.readPixels(0, 0, width, height, gl.RGBA, gl.FLOAT, q1q4Data);
+
+            gl.readBuffer(gl.COLOR_ATTACHMENT1);
+            gl.readPixels(0, 0, width, height, gl.RGBA, gl.FLOAT, q5q8Data);
+
+            gl.readBuffer(gl.COLOR_ATTACHMENT2);
+            gl.readPixels(0, 0, width, height, gl.RED, gl.FLOAT, q9Data);
+
+            gl.bindFramebuffer(gl.FRAMEBUFFER, wallInitFBO);
+            gl.readBuffer(gl.COLOR_ATTACHMENT0);
+            gl.readPixels(0, 0, width, height, gl.RGBA, gl.FLOAT, wallData);
+        } catch (error) {
+            console.warn('Auto calibration failed to read framebuffer data:', error);
+            return false;
+        } finally {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, prevFramebuffer);
+            if (prevReadBuffer !== null) {
+                gl.readBuffer(prevReadBuffer);
+            }
+        }
+
+        let minValue = Infinity;
+        let maxValue = -Infinity;
+
+        const bounds = zoneOfInterest.bounds || {
+            xMin: 0,
+            xMax: width - 1,
+            yMin: 0,
+            yMax: height - 1
+        };
+
+        for (let canvasY = bounds.yMin; canvasY <= bounds.yMax; canvasY++) {
+            const glY = height - 1 - canvasY;
+            for (let canvasX = bounds.xMin; canvasX <= bounds.xMax; canvasX++) {
+                const index = glY * width + canvasX;
+
+                const wall = wallData[index * 4];
+                if (wall > 0.5) continue;
+
+                const q1q4Offset = index * 4;
+                const q5q8Offset = index * 4;
+
+                const f0 = q9Data[index];
+                const f1 = q1q4Data[q1q4Offset + 0];
+                const f2 = q1q4Data[q1q4Offset + 1];
+                const f3 = q1q4Data[q1q4Offset + 2];
+                const f4 = q1q4Data[q1q4Offset + 3];
+                const f5 = q5q8Data[q5q8Offset + 0];
+                const f6 = q5q8Data[q5q8Offset + 1];
+                const f7 = q5q8Data[q5q8Offset + 2];
+                const f8 = q5q8Data[q5q8Offset + 3];
+
+                const rho = f0 + f1 + f2 + f3 + f4 + f5 + f6 + f7 + f8;
+                if (!Number.isFinite(rho) || rho <= 0.0) continue;
+
+                const ux = (f1 - f3 + f5 - f6 - f7 + f8) / rho;
+                const uy = (f2 - f4 + f5 + f6 - f7 - f8) / rho;
+                const speed = Math.hypot(ux, uy);
+
+                const exploded = !Number.isFinite(speed) || speed > 2.0;
+                if (exploded) continue;
+
+                const value = visualization.showVelocity ? speed : rho;
+                if (!Number.isFinite(value)) continue;
+
+                if (value < minValue) minValue = value;
+                if (value > maxValue) maxValue = value;
+            }
+        }
+
+        if (!Number.isFinite(minValue) || !Number.isFinite(maxValue)) {
+            return false;
+        }
+
+        if (visualization.showVelocity) {
+            applyAutoCalibratedSliderRange(velocityMinSlider, velocityMaxSlider, minValue, maxValue);
+        } else {
+            applyAutoCalibratedSliderRange(densityMinSlider, densityMaxSlider, minValue, maxValue);
+        }
+
+        SettingsCache.save(settings);
+        return true;
+    }
+
     let readState = ping;
     let writeState = pong;
     let lastTimeMs = 0;
@@ -1639,6 +1821,10 @@ async function main() {
             }
         });
 
+        if (autoCalibrateLiveToggle) {
+            autoCalibrateLiveToggle.checked = visualization.autoCalibrateEachFrame;
+        }
+
         // Sync simple object select
         const simpleObjectSelect = document.getElementById('simple-object-select');
         if (simpleObjectSelect) {
@@ -1669,6 +1855,60 @@ async function main() {
             visualization.showVelocity = true;
             updateVisualizationMode();
             SettingsCache.save(settings);
+        });
+    }
+
+    if (autoCalibrateBtn) {
+        autoCalibrateBtn.addEventListener('click', () => {
+            const didCalibrate = autoCalibrateVisualizationRange();
+            if (!didCalibrate) {
+                console.warn('Auto calibration did not find valid values in current frame.');
+            }
+        });
+    }
+
+    if (autoCalibrateLiveToggle) {
+        autoCalibrateLiveToggle.checked = visualization.autoCalibrateEachFrame;
+        autoCalibrateLiveToggle.addEventListener('change', () => {
+            visualization.autoCalibrateEachFrame = autoCalibrateLiveToggle.checked;
+            SettingsCache.save(settings);
+        });
+    }
+
+    if (zoneOfInterestBtn && canvas) {
+        zoneOfInterestBtn.addEventListener('click', () => {
+            zoneOfInterest.isSelecting = !zoneOfInterest.isSelecting;
+            if (zoneOfInterest.isSelecting) {
+                zoneOfInterest.dragStart = null;
+            }
+            updateZoneOfInterestUi();
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (!zoneOfInterest.isSelecting) return;
+            zoneOfInterest.dragStart = getCanvasPointFromMouseEvent(e);
+            zoneOfInterest.bounds = buildBoundsFromCorners(zoneOfInterest.dragStart, zoneOfInterest.dragStart);
+            updateZoneOfInterestUi();
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!zoneOfInterest.isSelecting || !zoneOfInterest.dragStart) return;
+            const current = getCanvasPointFromMouseEvent(e);
+            zoneOfInterest.bounds = buildBoundsFromCorners(zoneOfInterest.dragStart, current);
+            updateZoneOfInterestUi();
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            if (!zoneOfInterest.isSelecting || !zoneOfInterest.dragStart) return;
+            const current = getCanvasPointFromMouseEvent(e);
+            zoneOfInterest.bounds = buildBoundsFromCorners(zoneOfInterest.dragStart, current);
+            zoneOfInterest.dragStart = null;
+            zoneOfInterest.isSelecting = false;
+            updateZoneOfInterestUi();
+        });
+
+        window.addEventListener('resize', () => {
+            updateZoneOfInterestUi();
         });
     }
 
@@ -1935,6 +2175,16 @@ async function main() {
             // Resize canvas
             canvas.width = clampedWidth;
             canvas.height = clampedHeight;
+
+            if (zoneOfInterest.bounds) {
+                zoneOfInterest.bounds = {
+                    xMin: Math.min(zoneOfInterest.bounds.xMin, canvas.width - 1),
+                    xMax: Math.min(zoneOfInterest.bounds.xMax, canvas.width - 1),
+                    yMin: Math.min(zoneOfInterest.bounds.yMin, canvas.height - 1),
+                    yMax: Math.min(zoneOfInterest.bounds.yMax, canvas.height - 1)
+                };
+            }
+            updateZoneOfInterestUi();
             
             console.log('Resizing canvas to:', canvas.width, 'x', canvas.height);
             
@@ -2093,6 +2343,10 @@ async function main() {
 
         if (stepBudget > maxStepsPerFrame) {
             stepBudget = maxStepsPerFrame;
+        }
+
+        if (visualization.autoCalibrateEachFrame) {
+            autoCalibrateVisualizationRange();
         }
 
         drawDisplay(gl, programs, readState, canvas, wallsTexture, visualization);
