@@ -129,7 +129,10 @@ void main() {
                 // Right boundary: velocity inlet (unknown: f3, f6, f7)
                 float ux = u_tunnelVelocity;
                 float uy = 0.0;
-                float rhoBC = (f0 + f2 + f4 + 2.0 * (f1 + f5 + f8)) / (1.0 + ux);
+
+                // clamp fix on rho
+                float denom = max(1.0 + ux, 1e-5);
+                float rhoBC = (f0 + f2 + f4 + 2.0*(f1+f5+f8)) / denom;
 
                 f3 = f1 - (2.0 / 3.0) * rhoBC * ux;
                 f6 = f8 + 0.5 * (f4 - f2) + 0.5 * rhoBC * uy - (1.0 / 6.0) * rhoBC * ux;
@@ -183,7 +186,9 @@ void main() {
         }
     }
 
-    float rho = f0 + f1 + f2 + f3 + f4 + f5 + f6 + f7 + f8;
+    float rho = max(f0 + f1 + f2 + f3 + f4 + f5 + f6 + f7 + f8, 1e-6); // Prevent division by zero in velocity calculation
+    rho = clamp(rho, 0.5, 2.0); // Just testing, values to check I suppose
+
 
     // Fluid cell that has just been uncovered by moving wall: reinitialize from equilibrium
     if (isWall <= 0.5 && wasWall > 0.5) {
@@ -317,6 +322,26 @@ void main() {
     fnr[6] = (1.0/36.0) * (4.0*m0 + 2.0*m1 + m2 - 6.0*m3 - 3.0*m4 + 6.0*m5 + 3.0*m6 - 9.0*m8);
     fnr[7] = (1.0/36.0) * (4.0*m0 - m1 - 2.0*m2 + 6.0*m5 - 6.0*m6 - 9.0*m7);
     fnr[8] = (1.0/36.0) * (4.0*m0 + 2.0*m1 + m2 + 6.0*m3 + 3.0*m4 + 6.0*m5 + 3.0*m6 + 9.0*m8);
+
+
+    // Might break sim a bit but might stabilize
+    // We don't want negative population, can lead to instabs
+    // THIS ACTUALLY FIXED IT 
+    // According to our good friend GPT, that's entropy filtering
+    // Will read on that later
+    for(int i=0;i<9;i++){
+        fnr[i] = max(fnr[i], 1e-6);
+    }
+
+
+    // Diagnostic clamp
+    // If this fails, all hell breaks loose.
+    // it does look cool tho
+    for(int i=0;i<9;i++){
+        if(isinf(fnr[i]) || isnan(fnr[i])){
+            fnr[i] = 0.0;
+        }
+    }
     
     // Reorder back to our population ordering. Really necessary?
     // float fn[9];
