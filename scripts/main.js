@@ -261,7 +261,8 @@ const initializationModes = [
 // Boundary mode parameters
 const boundaryModeParams = {
     airflowTunnel: [
-        { key: 'tunnelVelocity', label: 'Tunnel Velocity', uniform: 'u_tunnelVelocity', value: -0.2, step: 0.01, min: -0.5, max: 0.0 }
+        { key: 'tunnelVelocity', label: 'Tunnel Velocity', uniform: 'u_tunnelVelocity', value: -0.2, step: 0.01, min: -0.5, max: 0.0 },
+        { key: 'rampRate', label: 'Ramp Rate (/10000 step)', uniform: null, value: 2.0, step: 0.1, min: 0.1, max: 29.0, logarithmic: true }
     ],
     wrap: [],
     boundary: [],
@@ -935,10 +936,19 @@ async function main() {
             const slider = document.createElement('input');
             slider.id = `boundary-param-${param.key}-slider`;
             slider.type = 'range';
-            slider.step = String(param.step);
-            slider.min = String(param.min);
-            slider.max = String(param.max);
-            slider.value = String(boundaryModeParamsValues[boundaryMode.current][param.key]);
+            
+            // Setup slider range (logarithmic if specified)
+            if (param.logarithmic) {
+                slider.step = '0.001';
+                slider.min = String(Math.log10(param.min));
+                slider.max = String(Math.log10(param.max));
+                slider.value = String(Math.log10(boundaryModeParamsValues[boundaryMode.current][param.key]));
+            } else {
+                slider.step = String(param.step);
+                slider.min = String(param.min);
+                slider.max = String(param.max);
+                slider.value = String(boundaryModeParamsValues[boundaryMode.current][param.key]);
+            }
             slider.style.width = '100%';
 
             const velocityDisplay = document.createElement('div');
@@ -959,7 +969,12 @@ async function main() {
                 const clamped = clampValue(numeric, param.min, param.max);
                 boundaryModeParamsValues[boundaryMode.current][param.key] = clamped;
                 numberInput.value = String(clamped.toFixed(2));
-                slider.value = String(clamped);
+                
+                if (param.logarithmic) {
+                    slider.value = String(Math.log10(clamped));
+                } else {
+                    slider.value = String(clamped);
+                }
                 updateVelocityDisplay();
                 SettingsCache.save(settings);
             };
@@ -972,12 +987,21 @@ async function main() {
                 const parsed = Number(numberInput.value);
                 if (Number.isFinite(parsed)) {
                     const clamped = clampValue(parsed, param.min, param.max);
-                    slider.value = String(clamped);
+                    if (param.logarithmic) {
+                        slider.value = String(Math.log10(clamped));
+                    } else {
+                        slider.value = String(clamped);
+                    }
                 }
             });
 
             slider.addEventListener('input', () => {
-                const value = Number(slider.value);
+                let value;
+                if (param.logarithmic) {
+                    value = Math.pow(10, Number(slider.value));
+                } else {
+                    value = Number(slider.value);
+                }
                 boundaryModeParamsValues[boundaryMode.current][param.key] = value;
                 numberInput.value = String(value.toFixed(2));
                 updateVelocityDisplay();
@@ -1748,6 +1772,72 @@ async function main() {
         }
     }
 
+    // Drag functionality for controls panel
+    if (controlsHeader && simControls) {
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        let panelStartX = 0;
+        let panelStartY = 0;
+
+        // Restore position from localStorage
+        const savedLeft = localStorage.getItem('lbm_controls_left');
+        const savedTop = localStorage.getItem('lbm_controls_top');
+        if (savedLeft !== null && savedTop !== null) {
+            simControls.style.left = savedLeft;
+            simControls.style.top = savedTop;
+            simControls.style.right = 'auto';
+        }
+
+        controlsHeader.addEventListener('mousedown', (e) => {
+            // Ignore if clicking on buttons or links
+            if (e.target.closest('#collapse-btn') || e.target.closest('#controls-github-link')) {
+                return;
+            }
+
+            isDragging = true;
+            dragStartX = e.clientX;
+            dragStartY = e.clientY;
+
+            const rect = simControls.getBoundingClientRect();
+            panelStartX = rect.left;
+            panelStartY = rect.top;
+
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+
+            const deltaX = e.clientX - dragStartX;
+            const deltaY = e.clientY - dragStartY;
+
+            let newLeft = panelStartX + deltaX;
+            let newTop = panelStartY + deltaY;
+
+            // Constrain to viewport
+            const rect = simControls.getBoundingClientRect();
+            const maxLeft = window.innerWidth - rect.width;
+            const maxTop = window.innerHeight - rect.height;
+
+            newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+            newTop = Math.max(0, Math.min(newTop, maxTop));
+
+            simControls.style.left = newLeft + 'px';
+            simControls.style.top = newTop + 'px';
+            simControls.style.right = 'auto';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                // Save position to localStorage
+                localStorage.setItem('lbm_controls_left', simControls.style.left);
+                localStorage.setItem('lbm_controls_top', simControls.style.top);
+            }
+        });
+    }
+
     if (controlsGithubLink) {
         controlsGithubLink.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -2375,7 +2465,7 @@ async function main() {
             // Ramp airflow velocity gradually toward target
             if (boundaryMode.current === 'airflowTunnel') {
                 const targetVelocity = boundaryModeParamsValues.airflowTunnel?.tunnelVelocity ?? 0.0;
-                const maxRampRate = CONFIG.AIRFLOW_RAMP_RATE;
+                const maxRampRate = (boundaryModeParamsValues.airflowTunnel?.rampRate ?? 2.0) / 10000.0;
                 const diff = targetVelocity - actualAirflowVelocity;
                 if (Math.abs(diff) > maxRampRate) {
                     actualAirflowVelocity += Math.sign(diff) * maxRampRate;
