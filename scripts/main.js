@@ -5,6 +5,63 @@ import { shadersCompiler } from './shader_helper.js';
 import { BITMAP_TEXTURE_UNIT, createCustomBitmapState, clearCustomBitmapState, loadCustomBitmapFromFile as loadCustomBitmapFromFileHelper, loadCustomBitmapFromDataUrl as loadCustomBitmapFromDataUrlHelper } from './bitmap.js';
 import { SimulationRecorder } from './recorder.js';
 
+// ============================================================================
+// SIMULATION CONFIGURATION PARAMETERS
+// ============================================================================
+const CONFIG = {
+    // Simulation Physics
+    AIRFLOW_RAMP_RATE: 0.00002,          // Maximum velocity change per step for airflow ramp-up
+    MAX_STEPS_PER_FRAME: 20,              // Maximum simulation steps to execute per render frame
+    
+    // Canvas Dimensions
+    CANVAS_WIDTH_MIN: 100,                // Minimum canvas width in pixels
+    CANVAS_WIDTH_MAX: 2000,               // Maximum canvas width in pixels
+    CANVAS_HEIGHT_MIN: 100,               // Minimum canvas height in pixels
+    CANVAS_HEIGHT_MAX: 2000,              // Maximum canvas height in pixels
+    CANVAS_RESIZE_DEBOUNCE_MS: 500,       // Debounce delay for canvas resize in milliseconds
+    
+    // Step Rate Control
+    STEP_RATE_MIN: 0,                     // Minimum steps per second
+    STEP_RATE_MAX: 1000,                  // Maximum steps per second
+    
+    // D2Q9 Lattice Visualization
+    D2Q9_LATTICE_SCALE: 80,               // Distance from center to edge points
+    D2Q9_ARROW_SIZE: 16,                  // Size of arrow heads
+    D2Q9_CENTER_DOT_RADIUS: 8,            // Radius of center dot
+    D2Q9_GRID_LINE_WIDTH: 2,              // Width of grid lines
+    D2Q9_DIRECTION_LINE_WIDTH: 4,         // Width of direction lines
+    D2Q9_VALUE_FONT_SIZE: 22,             // Font size for distribution values (px)
+    D2Q9_LABEL_FONT_SIZE: 18,             // Font size for index labels (px)
+    D2Q9_TEXT_PADDING: 6,                 // Padding around text backgrounds
+    D2Q9_LABEL_OFFSET: 24,                // Vertical offset for index labels
+    D2Q9_CENTER_LABEL_OFFSET: -36,        // Vertical offset for center label
+    D2Q9_TEXT_POSITION_SCALE: 1.3,        // Position multiplier for text placement
+    
+    // D2Q9 Visualization Colors
+    D2Q9_COLORS: {
+        background: 'rgba(10, 10, 15, 0.5)',
+        gridLines: 'rgba(100, 100, 120, 0.3)',
+        directionLines: 'rgba(159, 179, 255, 0.5)',
+        centerDot: '#51cf66',
+        centerText: '#51cf66',
+        directionText: '#9fb3ff',
+        labelText: '#888',
+        textBackground: 'rgba(20, 20, 24, 0.9)'
+    },
+    
+    // Hover Info Display
+    HOVER_INFO_OFFSET_X: 15,              // Horizontal offset from cursor (px)
+    HOVER_INFO_OFFSET_Y: 15,              // Vertical offset from cursor (px)
+    HOVER_INFO_DECIMAL_PLACES: 4,         // Decimal places for hover info values
+    
+    // UI Formatting
+    RANGE_SLIDER_DECIMAL_PLACES: 3,       // Decimal places for range slider displays
+    UI_FONT_SIZE_SMALL: 11,               // Small font size for UI elements (px)
+    
+    // WebGL Texture Units
+    MAX_TEXTURE_UNITS: 5                  // Number of texture units to unbind during cleanup
+};
+
 // Settings Cache Manager
 const SettingsCache = {
     STORAGE_KEY: 'lbm_settings',
@@ -27,6 +84,9 @@ const SettingsCache = {
                     velocityMin: settings.visualization.velocityMin,
                     velocityMax: settings.visualization.velocityMax,
                     showHoverInfo: settings.visualization.showHoverInfo
+                },
+                mrtRelaxation: {
+                    values: settings.mrtRelaxation.values
                 },
                 initialization: {
                     selectedModeId: settings.initialization.selectedModeId,
@@ -191,6 +251,16 @@ const boundaryModeParams = {
     open: []
 };
 
+// MRT Relaxation Spectrum Parameters
+const mrtRelaxationParams = [
+    { key: 's1', label: 's1 (Energy)', uniform: 'u_s1', value: 1.6, step: 0.001, min: 0.5, max: 2.0 },
+    { key: 's2', label: 's2 (Energy²)', uniform: 'u_s2', value: 1.6, step: 0.001, min: 0.5, max: 2.0 },
+    { key: 's4', label: 's4 (Energy flux)', uniform: 'u_s4', value: 1.6, step: 0.001, min: 0.5, max: 2.0 },
+    { key: 's6', label: 's6 (Energy flux)', uniform: 'u_s6', value: 1.6, step: 0.001, min: 0.5, max: 2.0 },
+    { key: 's7', label: 's7 (Stress, tau)', uniform: 'u_s7', value: -1.0, step: 0.001, min: -1.0, max: 2.0, useTau: true },
+    { key: 's8', label: 's8 (Stress, tau)', uniform: 'u_s8', value: -1.0, step: 0.001, min: -1.0, max: 2.0, useTau: true }
+];
+
 // Add object shaders to config
 wallObjects.forEach(obj => {
     if (obj.instantiateShader) {
@@ -250,7 +320,7 @@ function bindLBMTextures(gl, program, textures, wallsTexture, prevWallsTexture) 
 
 
 
-function runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture, boundaryMode, boundaryModeParamsValues, initialization) {
+function runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture, boundaryMode, boundaryModeParamsValues, initialization, mrtRelaxation) {
     // LBM Step
     gl.useProgram(programs.step);
     gl.bindFramebuffer(gl.FRAMEBUFFER, writeState.fbo);
@@ -275,6 +345,20 @@ function runStep(gl, programs, readState, writeState, canvas, wallsTexture, prev
     if (tauLoc !== null) {
         gl.uniform1f(tauLoc, initialization.values.tau ?? 0.6);
     }
+
+    // Pass MRT relaxation parameters
+    mrtRelaxationParams.forEach(param => {
+        const loc = gl.getUniformLocation(programs.step, param.uniform);
+        if (loc !== null) {
+            let value = mrtRelaxation.values[param.key];
+            // s7 and s8 are computed as 1.0/tau
+            if (param.useTau) {
+                const tau = initialization.values.tau ?? 0.6;
+                value = 1.0 / tau;
+            }
+            gl.uniform1f(loc, value);
+        }
+    });
     
     // Pass tunnel velocity parameter
     const tunnelVelLoc = gl.getUniformLocation(programs.step, "u_tunnelVelocity");
@@ -421,6 +505,7 @@ async function main() {
     const stepRateSlider = document.getElementById('step-rate-slider');
     const initTypeSelect = document.getElementById('init-type-select');
     const initParamsContainer = document.getElementById('init-params-container');
+    const mrtParamsContainer = document.getElementById('mrt-params-container');
     const vizDensityBtn = document.getElementById('viz-density-btn');
     const vizVelocityBtn = document.getElementById('viz-velocity-btn');
     const densityRangeBlock = document.getElementById('density-range-block');
@@ -528,6 +613,15 @@ async function main() {
         showHoverInfo: true
     };
 
+    const mrtRelaxation = {
+        values: {}
+    };
+
+    // Initialize MRT relaxation parameters
+    mrtRelaxationParams.forEach(param => {
+        mrtRelaxation.values[param.key] = param.value;
+    });
+
     const customBitmapOptions = {
         flipX: false,
         flipY: false,
@@ -560,6 +654,7 @@ async function main() {
         customBitmapCache,
         canvasDimensions,
         visualization,
+        mrtRelaxation,
         initialization,
         wallObjects
     };
@@ -600,6 +695,9 @@ async function main() {
             if (cachedSettings.visualization.showHoverInfo !== undefined) {
                 visualization.showHoverInfo = cachedSettings.visualization.showHoverInfo;
             }
+        }
+        if (cachedSettings.mrtRelaxation) {
+            Object.assign(mrtRelaxation.values, cachedSettings.mrtRelaxation.values);
         }
         if (cachedSettings.initialization) {
             initialization.selectedModeId = cachedSettings.initialization.selectedModeId;
@@ -718,6 +816,50 @@ async function main() {
         });
 
         renderInitializationParams();
+    }
+
+    function renderMrtParams() {
+        if (!mrtParamsContainer) return;
+        mrtParamsContainer.innerHTML = '';
+
+        mrtRelaxationParams.forEach(param => {
+            const row = document.createElement('div');
+            row.className = 'row';
+
+            const label = document.createElement('label');
+            label.htmlFor = `mrt-param-${param.key}`;
+            label.textContent = param.label;
+            label.title = param.useTau ? 'Computed as 1.0/tau during simulation' : '';
+
+            const input = document.createElement('input');
+            input.id = `mrt-param-${param.key}`;
+            input.type = 'number';
+            input.step = String(param.step);
+            input.min = String(param.min);
+            input.max = String(param.max);
+            input.value = String(mrtRelaxation.values[param.key]);
+            
+            if (param.useTau) {
+                input.disabled = true;
+                input.style.opacity = '0.6';
+                input.title = 'Auto-computed from tau';
+            }
+
+            input.addEventListener('change', () => {
+                if (param.useTau) return;
+                const parsed = Number(input.value);
+                const fallback = mrtRelaxation.values[param.key];
+                const numeric = Number.isFinite(parsed) ? parsed : fallback;
+                const clamped = clampValue(numeric, param.min, param.max);
+                mrtRelaxation.values[param.key] = clamped;
+                input.value = String(clamped);
+                SettingsCache.save(settings);
+            });
+
+            row.appendChild(label);
+            row.appendChild(input);
+            mrtParamsContainer.appendChild(row);
+        });
     }
 
     function renderBoundaryModeParams() {
@@ -1011,7 +1153,7 @@ async function main() {
         if (!minSlider || !maxSlider) return;
 
         const updateLabel = (minValue, maxValue) => {
-            if (valueLabel) valueLabel.textContent = `${minValue.toFixed(3)} – ${maxValue.toFixed(3)}`;
+            if (valueLabel) valueLabel.textContent = `${minValue.toFixed(CONFIG.RANGE_SLIDER_DECIMAL_PLACES)} – ${maxValue.toFixed(CONFIG.RANGE_SLIDER_DECIMAL_PLACES)}`;
         };
 
         const updateFromSliders = (movedMinSlider) => {
@@ -1261,10 +1403,8 @@ async function main() {
         simControl.stepRequests = 0;
         lastTimeMs = 0;
         
-        // Reset actual airflow velocity
-        actualAirflowVelocity = (boundaryMode.current === 'airflowTunnel')
-            ? (boundaryModeParamsValues.airflowTunnel?.tunnelVelocity ?? 0.0)
-            : 0.0;
+        // Reset actual airflow velocity to 0 (will ramp up to target)
+        actualAirflowVelocity = 0.0;
         boundaryModeParamsValues.actualAirflow = actualAirflowVelocity;
         updateVelocityDisplay();
 
@@ -1396,7 +1536,7 @@ async function main() {
     if (stepRateInput) {
         const updateStepRate = (value) => {
             const parsed = Number(value);
-            const sanitized = Number.isFinite(parsed) ? Math.max(0, Math.min(1000, Math.floor(parsed))) : 60;
+            const sanitized = Number.isFinite(parsed) ? Math.max(CONFIG.STEP_RATE_MIN, Math.min(CONFIG.STEP_RATE_MAX, Math.floor(parsed))) : 60;
             simControl.maxStepsPerSecond = sanitized;
             stepRateInput.value = String(sanitized);
             if (stepRateSlider) stepRateSlider.value = String(sanitized);
@@ -1410,7 +1550,7 @@ async function main() {
         stepRateInput.addEventListener('input', () => {
             const parsed = Number(stepRateInput.value);
             if (Number.isFinite(parsed)) {
-                const sanitized = Math.max(0, Math.min(1000, parsed));
+                const sanitized = Math.max(CONFIG.STEP_RATE_MIN, Math.min(CONFIG.STEP_RATE_MAX, parsed));
                 if (stepRateSlider) stepRateSlider.value = String(sanitized);
             }
         });
@@ -1428,6 +1568,7 @@ async function main() {
     await restoreCustomBitmapFromCache();
 
     initializeInitializationUi();
+    renderMrtParams();
     initializeSimpleObjectUi();
 
     // Function to update visualization mode UI
@@ -1576,11 +1717,11 @@ async function main() {
         const height = ctx.canvas.height;
         const centerX = width / 2;
         const centerY = height / 2;
-        const scale = 80; // Distance from center to edge points (doubled for 360px canvas)
+        const scale = CONFIG.D2Q9_LATTICE_SCALE;
 
         // Clear canvas
         ctx.clearRect(0, 0, width, height);
-        ctx.fillStyle = 'rgba(10, 10, 15, 0.5)';
+        ctx.fillStyle = CONFIG.D2Q9_COLORS.background;
         ctx.fillRect(0, 0, width, height);
 
         // D2Q9 directions: [dx, dy]
@@ -1597,8 +1738,8 @@ async function main() {
         ];
 
         // Draw grid lines
-        ctx.strokeStyle = 'rgba(100, 100, 120, 0.3)';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = CONFIG.D2Q9_COLORS.gridLines;
+        ctx.lineWidth = CONFIG.D2Q9_GRID_LINE_WIDTH;
         ctx.beginPath();
         // Vertical and horizontal
         ctx.moveTo(centerX, 0);
@@ -1620,8 +1761,8 @@ async function main() {
 
             // Draw direction line
             if (i > 0) { // Skip center for line drawing
-                ctx.strokeStyle = 'rgba(159, 179, 255, 0.5)';
-                ctx.lineWidth = 4;
+                ctx.strokeStyle = CONFIG.D2Q9_COLORS.directionLines;
+                ctx.lineWidth = CONFIG.D2Q9_DIRECTION_LINE_WIDTH;
                 ctx.beginPath();
                 ctx.moveTo(centerX, centerY);
                 ctx.lineTo(endX, endY);
@@ -1629,7 +1770,7 @@ async function main() {
 
                 // Draw arrow head
                 const angle = Math.atan2(dy, dx);
-                const arrowSize = 16;
+                const arrowSize = CONFIG.D2Q9_ARROW_SIZE;
                 ctx.beginPath();
                 ctx.moveTo(endX, endY);
                 ctx.lineTo(
@@ -1641,20 +1782,20 @@ async function main() {
                     endY - arrowSize * Math.sin(angle + Math.PI / 6)
                 );
                 ctx.closePath();
-                ctx.fillStyle = 'rgba(159, 179, 255, 0.5)';
+                ctx.fillStyle = CONFIG.D2Q9_COLORS.directionLines;
                 ctx.fill();
             }
 
             // Draw value text
-            const value = f[i].toFixed(3);
-            const textX = centerX + dx * scale * (i === 0 ? 0 : 1.3);
-            const textY = centerY + dy * scale * (i === 0 ? 0 : 1.3) + (i === 0 ? -36 : 0);
+            const value = f[i].toFixed(CONFIG.RANGE_SLIDER_DECIMAL_PLACES);
+            const textX = centerX + dx * scale * (i === 0 ? 0 : CONFIG.D2Q9_TEXT_POSITION_SCALE);
+            const textY = centerY + dy * scale * (i === 0 ? 0 : CONFIG.D2Q9_TEXT_POSITION_SCALE) + (i === 0 ? CONFIG.D2Q9_CENTER_LABEL_OFFSET : 0);
 
             // Background for text
-            ctx.font = '22px "Courier New", monospace';
+            ctx.font = `${CONFIG.D2Q9_VALUE_FONT_SIZE}px "Courier New", monospace`;
             const metrics = ctx.measureText(value);
-            const padding = 6;
-            ctx.fillStyle = 'rgba(20, 20, 24, 0.9)';
+            const padding = CONFIG.D2Q9_TEXT_PADDING;
+            ctx.fillStyle = CONFIG.D2Q9_COLORS.textBackground;
             ctx.fillRect(
                 textX - metrics.width / 2 - padding,
                 textY - 12 - padding,
@@ -1663,22 +1804,22 @@ async function main() {
             );
 
             // Draw text
-            ctx.fillStyle = i === 0 ? '#51cf66' : '#9fb3ff';
+            ctx.fillStyle = i === 0 ? CONFIG.D2Q9_COLORS.centerText : CONFIG.D2Q9_COLORS.directionText;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(value, textX, textY);
 
             // Draw index label (above for top directions, below for others)
             const isTopDirection = [2, 5, 6].includes(i);
-            ctx.font = '18px "Courier New", monospace';
-            ctx.fillStyle = '#888';
-            ctx.fillText(`f${i}`, textX, textY + (isTopDirection ? -24 : 24));
+            ctx.font = `${CONFIG.D2Q9_LABEL_FONT_SIZE}px "Courier New", monospace`;
+            ctx.fillStyle = CONFIG.D2Q9_COLORS.labelText;
+            ctx.fillText(`f${i}`, textX, textY + (isTopDirection ? -CONFIG.D2Q9_LABEL_OFFSET : CONFIG.D2Q9_LABEL_OFFSET));
         });
 
         // Draw center dot
         ctx.beginPath();
-        ctx.arc(centerX, centerY, 8, 0, Math.PI * 2);
-        ctx.fillStyle = '#51cf66';
+        ctx.arc(centerX, centerY, CONFIG.D2Q9_CENTER_DOT_RADIUS, 0, Math.PI * 2);
+        ctx.fillStyle = CONFIG.D2Q9_COLORS.centerDot;
         ctx.fill();
     }
 
@@ -1737,16 +1878,16 @@ async function main() {
         // Update hover info display
         hoverInfoContent.innerHTML = `
 <span class="label">Position:</span> <span class="value">${x}, ${y}</span>
-<span class="label">Density:</span> <span class="value">${density.toFixed(4)}</span>
-<span class="label">Velocity:</span> <span class="value">${speed.toFixed(4)}</span>
-<span class="label">Vx:</span> <span class="value">${ux.toFixed(4)}</span>
-<span class="label">Vy:</span> <span class="value">${uy.toFixed(4)}</span>
+<span class="label">Density:</span> <span class="value">${density.toFixed(CONFIG.HOVER_INFO_DECIMAL_PLACES)}</span>
+<span class="label">Velocity:</span> <span class="value">${speed.toFixed(CONFIG.HOVER_INFO_DECIMAL_PLACES)}</span>
+<span class="label">Vx:</span> <span class="value">${ux.toFixed(CONFIG.HOVER_INFO_DECIMAL_PLACES)}</span>
+<span class="label">Vy:</span> <span class="value">${uy.toFixed(CONFIG.HOVER_INFO_DECIMAL_PLACES)}</span>
         `.trim();
 
         // Position the hover info near the mouse
         hoverInfoDiv.style.display = 'flex';
-        hoverInfoDiv.style.left = (clientX + 15) + 'px';
-        hoverInfoDiv.style.top = (clientY + 15) + 'px';
+        hoverInfoDiv.style.left = (clientX + CONFIG.HOVER_INFO_OFFSET_X) + 'px';
+        hoverInfoDiv.style.top = (clientY + CONFIG.HOVER_INFO_OFFSET_Y) + 'px';
     }
 
     if (boundaryModeSelect) {
@@ -1767,8 +1908,8 @@ async function main() {
         resizeTimeout = setTimeout(async () => {
             const width = Number(canvasWidthInput?.value) || 600;
             const height = Number(canvasHeightInput?.value) || 600;
-            const clampedWidth = clampValue(width, 100, 2000);
-            const clampedHeight = clampValue(height, 100, 2000);
+            const clampedWidth = clampValue(width, CONFIG.CANVAS_WIDTH_MIN, CONFIG.CANVAS_WIDTH_MAX);
+            const clampedHeight = clampValue(height, CONFIG.CANVAS_HEIGHT_MIN, CONFIG.CANVAS_HEIGHT_MAX);
             
             canvasDimensions.width = clampedWidth;
             canvasDimensions.height = clampedHeight;
@@ -1864,7 +2005,7 @@ async function main() {
             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
             
             // Unbind all texture units to clean state
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < CONFIG.MAX_TEXTURE_UNITS; i++) {
                 gl.activeTexture(gl.TEXTURE0 + i);
                 gl.bindTexture(gl.TEXTURE_2D, null);
             }
@@ -1873,7 +2014,7 @@ async function main() {
             
             resetSimulation();
             SettingsCache.save(settings);
-        }, 500);
+        }, CONFIG.CANVAS_RESIZE_DEBOUNCE_MS);
     };
 
     if (canvasWidthInput) {
@@ -1891,20 +2032,11 @@ async function main() {
         const dt = (timeMs - lastTimeMs) / 1000.0;
         lastTimeMs = timeMs;
 
-        // Keep airflow state synchronized even when paused/no step happens.
-        if (boundaryMode.current === 'airflowTunnel') {
-            actualAirflowVelocity = boundaryModeParamsValues.airflowTunnel?.tunnelVelocity ?? 0.0;
-        } else {
-            actualAirflowVelocity = 0.0;
-        }
-        boundaryModeParamsValues.actualAirflow = actualAirflowVelocity;
-        updateVelocityDisplay();
-
         if (simControl.isPlaying) {
             stepBudget += dt * simControl.maxStepsPerSecond;
         }
 
-        const maxStepsPerFrame = 20;
+        const maxStepsPerFrame = CONFIG.MAX_STEPS_PER_FRAME;
         let stepsThisFrame = 0;
 
         while ((stepBudget >= 1.0 || simControl.stepRequests > 0) && stepsThisFrame < maxStepsPerFrame) {
@@ -1915,12 +2047,28 @@ async function main() {
             }
 
             simulationIteration += 1;
+            
+            // Ramp airflow velocity gradually toward target
+            if (boundaryMode.current === 'airflowTunnel') {
+                const targetVelocity = boundaryModeParamsValues.airflowTunnel?.tunnelVelocity ?? 0.0;
+                const maxRampRate = CONFIG.AIRFLOW_RAMP_RATE;
+                const diff = targetVelocity - actualAirflowVelocity;
+                if (Math.abs(diff) > maxRampRate) {
+                    actualAirflowVelocity += Math.sign(diff) * maxRampRate;
+                } else {
+                    actualAirflowVelocity = targetVelocity;
+                }
+            } else {
+                actualAirflowVelocity = 0.0;
+            }
+            boundaryModeParamsValues.actualAirflow = actualAirflowVelocity;
+            
             if (hasEnabledMovingObjects()) {
                 copyWallsToPrev();
                 initializeWalls(simulationIteration, true);
             }
 
-            runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture, boundaryMode, boundaryModeParamsValues, initialization);
+            runStep(gl, programs, readState, writeState, canvas, wallsTexture, prevWallsTexture, boundaryMode, boundaryModeParamsValues, initialization, mrtRelaxation);
 
             const temp = readState;
             readState = writeState;

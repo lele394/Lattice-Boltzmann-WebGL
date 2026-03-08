@@ -6,6 +6,7 @@ uniform vec2 u_res;
 uniform float u_boundaryMode; // 0=wrap, 1=boundary, 2=open, 3=airflowTunnel
 uniform float u_tunnelVelocity;
 uniform float u_tau;
+uniform float u_s1, u_s2, u_s4, u_s6, u_s7, u_s8; // MRT relaxation rates
 in vec2 v_uv;
 
 layout(location = 0) out vec4 out_Q1Q4;
@@ -67,6 +68,14 @@ void main() {
 
     float tau = u_tau; // Relaxation time (must be > 0.5 for stability, higher = more viscous)
     vec2 px = 1.0 / u_res;
+
+    // MRT Relaxation rates (configurable via UI)
+    float s1 = u_s1;
+    float s2 = u_s2;
+    float s4 = u_s4;
+    float s6 = u_s6;
+    float s7 = u_s7; // Typically 1.0/tau
+    float s8 = u_s8; // Typically 1.0/tau
 
     // --- STREAMING (PULL) ---
     // Pull from the opposite direction
@@ -274,8 +283,7 @@ void main() {
     float m8 = -fr[2] + fr[4] - fr[6] + fr[8];
 
     // --- COLLISION ---
-    // Relaxation rates matching reference C code from Gábor Závodszky
-    float s1=1.001, s2=1.001, s4=1.001, s6=1.001, s7=1.0/tau, s8=1.0/tau;
+
 
     // Equilibrium
     float e_eq   = rho * (-2.0 + 3.0*u2v2);
